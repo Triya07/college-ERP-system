@@ -1,17 +1,27 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 function Attendance() {
-  const [attendanceRecords, setAttendanceRecords] = useState([
-    { id: 1, student: "Rahul", course: "Database Systems", date: "2024-02-01", status: "Present" }
-  ]);
 
+  // 1️⃣ Attendance data from database
+  const [attendanceRecords, setAttendanceRecords] = useState([]);
+
+  // 2️⃣ Form data
   const [formData, setFormData] = useState({
-    student: "",
-    course: "",
+    student_id: "",
+    course_id: "",
     date: "",
     status: "Present"
   });
 
+  // 3️⃣ Fetch attendance from backend (MySQL)
+  useEffect(() => {
+    fetch("http://localhost:3001/attendance")
+      .then((res) => res.json())
+      .then((data) => setAttendanceRecords(data))
+      .catch((err) => console.log(err));
+  }, []);
+
+  // 4️⃣ Handle input change
   const handleChange = (e) => {
     setFormData({
       ...formData,
@@ -19,22 +29,22 @@ function Attendance() {
     });
   };
 
+  // 5️⃣ Submit attendance to backend (MySQL)
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    const newRecord = {
-      id: attendanceRecords.length + 1,
-      ...formData
-    };
-
-    setAttendanceRecords([...attendanceRecords, newRecord]);
-
-    setFormData({
-      student: "",
-      course: "",
-      date: "",
-      status: "Present"
-    });
+    fetch("http://localhost:3001/attendance", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(formData)
+    })
+      .then(() => {
+        alert("Attendance added successfully");
+        window.location.reload(); // reload to fetch updated data
+      })
+      .catch((err) => console.log(err));
   };
 
   return (
@@ -47,13 +57,14 @@ function Attendance() {
 
         <form onSubmit={handleSubmit}>
           <div className="row">
+
             <div className="col-md-3">
               <input
-                type="text"
-                name="student"
-                placeholder="Student Name"
+                type="number"
+                name="student_id"
+                placeholder="Student ID"
                 className="form-control"
-                value={formData.student}
+                value={formData.student_id}
                 onChange={handleChange}
                 required
               />
@@ -61,11 +72,11 @@ function Attendance() {
 
             <div className="col-md-3">
               <input
-                type="text"
-                name="course"
-                placeholder="Course Name"
+                type="number"
+                name="course_id"
+                placeholder="Course ID"
                 className="form-control"
-                value={formData.course}
+                value={formData.course_id}
                 onChange={handleChange}
                 required
               />
@@ -108,7 +119,6 @@ function Attendance() {
         <table className="table table-bordered mt-3">
           <thead>
             <tr>
-              <th>ID</th>
               <th>Student</th>
               <th>Course</th>
               <th>Date</th>
@@ -117,9 +127,8 @@ function Attendance() {
           </thead>
 
           <tbody>
-            {attendanceRecords.map((record) => (
-              <tr key={record.id}>
-                <td>{record.id}</td>
+            {attendanceRecords.map((record, index) => (
+              <tr key={index}>
                 <td>{record.student}</td>
                 <td>{record.course}</td>
                 <td>{record.date}</td>
