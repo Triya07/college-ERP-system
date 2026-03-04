@@ -87,3 +87,15 @@ app.get("/students", (req, res) => {
     }
   });
 });
+
+
+app.get("/attendance-report", (req, res) => {
+  db.query("SELECT * FROM attendance_report", (err, result) => {
+    if (err) {
+      console.log(err);
+      res.status(500).send("Error fetching report");
+    } else {
+      res.json(result);
+    }
+  });
+});

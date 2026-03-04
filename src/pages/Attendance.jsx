@@ -42,10 +42,32 @@ function Attendance() {
     })
       .then(() => {
         alert("Attendance added successfully");
-        window.location.reload(); // reload to fetch updated data
+        window.location.reload();
       })
       .catch((err) => console.log(err));
   };
+
+  // 6️⃣ Calculate attendance percentage per student
+  const calculatePercentage = (studentName) => {
+    const studentData = attendanceRecords.filter(
+      (rec) => rec.student === studentName
+    );
+
+    const total = studentData.length;
+
+    const presentCount = studentData.filter(
+      (rec) => rec.status === "Present"
+    ).length;
+
+    if (total === 0) return 0;
+
+    return ((presentCount / total) * 100).toFixed(2);
+  };
+
+  // 7️⃣ Get unique students
+  const uniqueStudents = [
+    ...new Set(attendanceRecords.map((rec) => rec.student))
+  ];
 
   return (
     <div>
@@ -112,7 +134,7 @@ function Attendance() {
         </form>
       </div>
 
-      {/* Attendance Table */}
+      {/* Attendance Records */}
       <div className="card p-4">
         <h5>Attendance Records</h5>
 
@@ -132,12 +154,66 @@ function Attendance() {
                 <td>{record.student}</td>
                 <td>{record.course}</td>
                 <td>{record.date}</td>
-                <td>{record.status}</td>
+                <td>
+                  <span
+                    className={
+                      record.status === "Present"
+                        ? "text-success"
+                        : "text-danger"
+                    }
+                  >
+                    {record.status}
+                  </span>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {/* Attendance Summary */}
+      <div className="card p-4 mt-4">
+        <h5>Attendance Summary</h5>
+
+        <table className="table table-bordered mt-3">
+          <thead>
+            <tr>
+              <th>Student</th>
+              <th>Attendance %</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {uniqueStudents.map((student, index) => {
+              const percentage = calculatePercentage(student);
+
+              return (
+                <tr key={index}>
+                  <td>{student}</td>
+
+                  <td>
+                    <div className="progress">
+                      <div
+                        className={`progress-bar ${
+                          percentage >= 75
+                            ? "bg-success"
+                            : percentage >= 40
+                            ? "bg-warning"
+                            : "bg-danger"
+                        }`}
+                        style={{ width: `${percentage}%` }}
+                      >
+                        {percentage}%
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
     </div>
   );
 }
