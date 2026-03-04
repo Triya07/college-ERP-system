@@ -1,0 +1,41 @@
+body {
+  background-color: #f8f9fa;
+  font-family: 'Montserrat', sans-serif;
+}
+
+/* Sidebar styling */
+.sidebar {
+  background-color: #343a40;
+  min-height: 100vh;
+}
+
+.sidebar .nav-link {
+  color: #fff;
+}
+
+.sidebar .nav-link:hover,
+.sidebar .nav-link.active {
+  background-color: #495057;
+  color: #fff;
+}
+
+/* Header tweaks */
+.navbar-brand {
+  font-weight: 700;
+}
+
+main {
+  overflow-y: auto;
+}
+
+/* Card headers & footers look a bit more polished */
+.card {
+  border-radius: 8px;
+}
+
+/* small responsive adjustments */
+@media (max-width: 768px) {
+  .sidebar {
+    display: none;
+  }
+}
