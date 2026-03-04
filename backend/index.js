@@ -12,7 +12,11 @@ app.use(express.json());
 const db = mysql.createConnection({
   host: "localhost",
   user: "root",
+<<<<<<< HEAD
   password: "Prkvi@08", // change ONLY if your password is different
+=======
+  password: "1972001Prachi@", // change ONLY if your password is different
+>>>>>>> f473ae27c41534a2401300d4308d64d293f31aff
   database: "college_erp",
   port: 3306
 
