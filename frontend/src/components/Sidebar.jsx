@@ -1,5 +1,6 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
+import { MdDashboard, MdPeople, MdBook, MdDateRange, MdAssignment, MdHome } from "react-icons/md";
 
 function Sidebar() {
   return (
@@ -14,7 +15,18 @@ function Sidebar() {
             }
             to="/"
           >
-            <i className="bi bi-speedometer2 me-2" /> Dashboard
+            <MdHome className="me-2" style={{ display: "inline" }} /> Home
+          </NavLink>
+        </li>
+
+        <li className="nav-item">
+          <NavLink
+            className={({ isActive }) =>
+              "nav-link text-white" + (isActive ? " active" : "")
+            }
+            to="/dashboard"
+          >
+            <MdDashboard className="me-2" style={{ display: "inline" }} /> Dashboard
           </NavLink>
         </li>
 
@@ -25,7 +37,7 @@ function Sidebar() {
             }
             to="/students"
           >
-            <i className="bi bi-people-fill me-2" /> Students
+            <MdPeople className="me-2" style={{ display: "inline" }} /> Students
           </NavLink>
         </li>
 
@@ -36,7 +48,7 @@ function Sidebar() {
             }
             to="/courses"
           >
-            <i className="bi bi-book-fill me-2" /> Courses
+            <MdBook className="me-2" style={{ display: "inline" }} /> Courses
           </NavLink>
         </li>
 
@@ -47,7 +59,7 @@ function Sidebar() {
             }
             to="/attendance"
           >
-            <i className="bi bi-calendar-check-fill me-2" /> Attendance
+            <MdDateRange className="me-2" style={{ display: "inline" }} /> Attendance
           </NavLink>
         </li>
 
@@ -58,7 +70,7 @@ function Sidebar() {
             }
             to="/results"
           >
-            <i className="bi bi-bar-chart-fill me-2" /> Results
+            <MdAssignment className="me-2" style={{ display: "inline" }} /> Results
           </NavLink>
         </li>
       </ul>
