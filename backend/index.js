@@ -13,7 +13,7 @@ const db = mysql.createConnection({
   host: "localhost",
   user: "root",
   // keep database password outside source control
-  password: process.env.DB_PASSWORD || "Prkvi@08",
+  password: process.env.DB_PASSWORD || "1972001Prachi@",
   database: "college_erp",
   port: 3306
 
@@ -86,6 +86,76 @@ app.get("/students", (req, res) => {
     } else {
       res.json(result);
     }
+  });
+});
+
+app.post("/students", (req, res) => {
+  const { name, department, year, email, phone } = req.body;
+
+  if (!name || !department || !year || !email || !phone) {
+    return res.status(400).send("All student fields are required");
+  }
+
+  const query = `
+    INSERT INTO student (name, department, year, email, phone)
+    VALUES (?, ?, ?, ?, ?)
+  `;
+
+  db.query(query, [name, department, year, email, phone], (err, result) => {
+    if (err) {
+      console.log(err);
+      return res.status(500).send("Error adding student");
+    }
+
+    res.status(201).json({
+      message: "Student added successfully",
+      student_id: result.insertId
+    });
+  });
+});
+
+app.put("/students/:id", (req, res) => {
+  const { id } = req.params;
+  const { name, department, year, email, phone } = req.body;
+
+  if (!name || !department || !year || !email || !phone) {
+    return res.status(400).send("All student fields are required");
+  }
+
+  const query = `
+    UPDATE student
+    SET name = ?, department = ?, year = ?, email = ?, phone = ?
+    WHERE student_id = ?
+  `;
+
+  db.query(query, [name, department, year, email, phone, id], (err, result) => {
+    if (err) {
+      console.log(err);
+      return res.status(500).send("Error updating student");
+    }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).send("Student not found");
+    }
+
+    res.json({ message: "Student updated successfully" });
+  });
+});
+
+app.delete("/students/:id", (req, res) => {
+  const { id } = req.params;
+
+  db.query("DELETE FROM student WHERE student_id = ?", [id], (err, result) => {
+    if (err) {
+      console.log(err);
+      return res.status(500).send("Error deleting student");
+    }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).send("Student not found");
+    }
+
+    res.json({ message: "Student deleted successfully" });
   });
 });
 
