@@ -1,6 +1,6 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
-import { MdDashboard, MdPeople, MdBook, MdDateRange, MdAssignment, MdHome } from "react-icons/md";
+import { MdDashboard, MdPeople, MdBook, MdDateRange, MdAssignment, MdHome, MdSchool } from "react-icons/md";
 
 function Sidebar() {
   return (
@@ -49,6 +49,17 @@ function Sidebar() {
             to="/courses"
           >
             <MdBook className="me-2" style={{ display: "inline" }} /> Courses
+          </NavLink>
+        </li>
+
+        <li className="nav-item">
+          <NavLink
+            className={({ isActive }) =>
+              "nav-link text-white" + (isActive ? " active" : "")
+            }
+            to="/faculty"
+          >
+            <MdSchool className="me-2" style={{ display: "inline" }} /> Faculty
           </NavLink>
         </li>
 

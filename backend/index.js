@@ -3,10 +3,14 @@ console.log("🔥 index.js started");
 const express = require("express");
 const mysql = require("mysql2");
 const cors = require("cors");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-production";
 
 // MySQL connection
 const db = mysql.createConnection({
@@ -17,7 +21,7 @@ const db = mysql.createConnection({
   database: "college_erp",
   port: 3306
 
-});
+}); 
 
 // Check database connection
 db.connect((err) => {
@@ -27,6 +31,206 @@ db.connect((err) => {
   } else {
     console.log("✅ Connected to MySQL database");
   }
+});
+
+// ===== MIDDLEWARE =====
+// Verify JWT Token
+const verifyToken = (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) {
+    return res.status(401).json({ message: "No token provided" });
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({ message: "Invalid token" });
+  }
+};
+
+// Check user role
+const checkRole = (allowedRoles) => {
+  return (req, res, next) => {
+    if (!allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    next();
+  };
+};
+
+// ===== AUTHENTICATION ROUTES =====
+
+// Sign Up - Create new user (student registration)
+app.post("/auth/signup", async (req, res) => {
+  const { email, password, role, name, department, year, phone } = req.body;
+
+  if (!email || !password || !role || !name) {
+    return res.status(400).json({ message: "All fields required" });
+  }
+
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create user account
+    db.query(
+      "INSERT INTO user (email, password, role) VALUES (?, ?, ?)",
+      [email, hashedPassword, role],
+      (err, result) => {
+        if (err) {
+          console.log(err);
+          if (err.code === "ER_DUP_ENTRY") {
+            return res.status(400).json({ message: "Email already exists" });
+          }
+          return res.status(500).json({ message: "Error creating account" });
+        }
+
+        const userId = result.insertId;
+
+        // If student role, create student record
+        if (role === "student") {
+          const rollNumber = `STU${userId}${Date.now()}`.substring(0, 20);
+          db.query(
+            "INSERT INTO student (user_id, name, department, year, phone) VALUES (?, ?, ?, ?, ?)",
+            [userId, name, department || "General", year || 1, phone || ""],
+            (studentErr) => {
+              if (studentErr) {
+                console.log(studentErr);
+                return res.status(500).json({ message: "Error creating student profile" });
+              }
+              res.status(201).json({ message: "Student registered successfully" });
+            }
+          );
+        }
+        // If faculty role, create faculty record
+        else if (role === "teacher") {
+          db.query(
+            "INSERT INTO faculty (user_id, name, department, phone) VALUES (?, ?, ?, ?)",
+            [userId, name, department || "General", phone || ""],
+            (facultyErr) => {
+              if (facultyErr) {
+                console.log(facultyErr);
+                return res.status(500).json({ message: "Error creating faculty profile" });
+              }
+              res.status(201).json({ message: "Faculty registered successfully" });
+            }
+          );
+        } else if (role === "admin") {
+          db.query(
+            "INSERT INTO admin (user_id, name, department, phone) VALUES (?, ?, ?, ?)",
+            [userId, name, department || "Admin", phone || ""],
+            (adminErr) => {
+              if (adminErr) {
+                console.log(adminErr);
+                return res.status(500).json({ message: "Error creating admin profile" });
+              }
+              res.status(201).json({ message: "Admin account created successfully" });
+            }
+          );
+        }
+      }
+    );
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Login - Authenticate user
+app.post("/auth/login", async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ message: "Email and password required" });
+  }
+
+  try {
+    db.query(
+      "SELECT user_id, email, password, role FROM user WHERE email = ?",
+      [email],
+      async (err, results) => {
+        if (err) {
+          console.log(err);
+          return res.status(500).json({ message: "Server error" });
+        }
+
+        if (results.length === 0) {
+          return res.status(401).json({ message: "Invalid credentials" });
+        }
+
+        const user = results[0];
+        const passwordValid = await bcrypt.compare(password, user.password);
+
+        if (!passwordValid) {
+          return res.status(401).json({ message: "Invalid credentials" });
+        }
+
+        const token = jwt.sign(
+          { user_id: user.user_id, email: user.email, role: user.role },
+          JWT_SECRET,
+          { expiresIn: "24h" }
+        );
+
+        // Fetch additional profile info based on role
+        let profileData = {};
+        if (user.role === "student") {
+          db.query(
+            "SELECT student_id, name, department, year FROM student WHERE user_id = ?",
+            [user.user_id],
+            (err, studentData) => {
+              if (studentData && studentData.length > 0) {
+                profileData = { ...studentData[0] };
+              }
+              res.json({
+                token,
+                user: { ...user, password: undefined },
+                profile: profileData
+              });
+            }
+          );
+        } else if (user.role === "teacher") {
+          db.query(
+            "SELECT faculty_id, name, department FROM faculty WHERE user_id = ?",
+            [user.user_id],
+            (err, facultyData) => {
+              if (facultyData && facultyData.length > 0) {
+                profileData = { ...facultyData[0] };
+              }
+              res.json({
+                token,
+                user: { ...user, password: undefined },
+                profile: profileData
+              });
+            }
+          );
+        } else {
+          db.query(
+            "SELECT admin_id, name, department FROM admin WHERE user_id = ?",
+            [user.user_id],
+            (err, adminData) => {
+              if (adminData && adminData.length > 0) {
+                profileData = { ...adminData[0] };
+              }
+              res.json({
+                token,
+                user: { ...user, password: undefined },
+                profile: profileData
+              });
+            }
+          );
+        }
+      }
+    );
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Verify Token & Get User Info
+app.get("/auth/verify", verifyToken, (req, res) => {
+  res.json({ user: req.user });
 });
 
 const getResultSchema = (callback) => {
@@ -102,9 +306,126 @@ const getResultSchema = (callback) => {
 // );
 // =================================
 
+// ===== ADMIN ENDPOINTS =====
+// Get all admins
+app.get("/admin/list", verifyToken, checkRole(["admin"]), (req, res) => {
+  db.query("SELECT admin_id, user_id, name, department, phone FROM admin", (err, result) => {
+    if (err) {
+      console.log(err);
+      res.status(500).send("Error fetching admins");
+    } else {
+      res.json(result);
+    }
+  });
+});
+
+// Get admin dashboard statistics
+app.get("/admin/stats", verifyToken, checkRole(["admin"]), (req, res) => {
+  const statsQuery = `
+    SELECT 
+      (SELECT COUNT(*) FROM student) as total_students,
+      (SELECT COUNT(*) FROM faculty) as total_faculty,
+      (SELECT COUNT(*) FROM course) as total_courses,
+      (SELECT COUNT(*) FROM user) as total_users
+  `;
+
+  db.query(statsQuery, (err, result) => {
+    if (err) {
+      console.log(err);
+      res.status(500).json({ message: "Error fetching statistics" });
+    } else {
+      res.json(result[0]);
+    }
+  });
+});
+
+// Get all faculty/teachers
+app.get("/admin/faculty", verifyToken, checkRole(["admin"]), (req, res) => {
+  db.query("SELECT f.faculty_id, f.user_id, f.name, f.department, f.phone, f.qualification, f.experience FROM faculty f", (err, result) => {
+    if (err) {
+      console.log(err);
+      res.status(500).send("Error fetching faculty");
+    } else {
+      res.json(result);
+    }
+  });
+});
+
+// Add new faculty
+app.post("/admin/faculty", verifyToken, checkRole(["admin"]), async (req, res) => {
+  const { email, password, name, department, phone, qualification, experience } = req.body;
+
+  if (!email || !password || !name) {
+    return res.status(400).json({ message: "Email, password, and name are required" });
+  }
+
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    db.query(
+      "INSERT INTO user (email, password, role) VALUES (?, ?, ?)",
+      [email, hashedPassword, "teacher"],
+      (err, result) => {
+        if (err) {
+          console.log(err);
+          if (err.code === "ER_DUP_ENTRY") {
+            return res.status(400).json({ message: "Email already exists" });
+          }
+          return res.status(500).json({ message: "Error creating account" });
+        }
+
+        const userId = result.insertId;
+        db.query(
+          "INSERT INTO faculty (user_id, name, department, phone, qualification, experience) VALUES (?, ?, ?, ?, ?, ?)",
+          [userId, name, department || "General", phone || "", qualification || "", experience || 0],
+          (facultyErr) => {
+            if (facultyErr) {
+              console.log(facultyErr);
+              return res.status(500).json({ message: "Error creating faculty profile" });
+            }
+            res.status(201).json({ message: "Faculty added successfully", faculty_id: facultyErr?.insertId });
+          }
+        );
+      }
+    );
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Delete faculty
+app.delete("/admin/faculty/:id", verifyToken, checkRole(["admin"]), (req, res) => {
+  const { id } = req.params;
+
+  db.query("SELECT user_id FROM faculty WHERE faculty_id = ?", [id], (err, result) => {
+    if (err || !result.length) {
+      return res.status(404).json({ message: "Faculty not found" });
+    }
+
+    const userId = result[0].user_id;
+
+    db.query("DELETE FROM faculty WHERE faculty_id = ?", [id], (err) => {
+      if (err) {
+        console.log(err);
+        return res.status(500).json({ message: "Error deleting faculty" });
+      }
+
+      db.query("DELETE FROM user WHERE user_id = ?", [userId], (err) => {
+        if (err) {
+          console.log(err);
+          return res.status(500).json({ message: "Error deleting user account" });
+        }
+
+        res.json({ message: "Faculty deleted successfully" });
+      });
+    });
+  });
+});
+
 // Test route
 app.get("/", (req, res) => {
-  res.send("College ERP Backend Running");
+  res.send("College ERP Backend Running with Authentication ✅");
 });
 
 // Start server
@@ -152,7 +473,7 @@ app.post("/attendance", (req, res) => {
 });
 
 app.get("/students", (req, res) => {
-  db.query("SELECT student_id, name, department, year, email, phone, IFNULL(enrollment_date, NULL) as enrollment_date FROM student", (err, result) => {
+  db.query("SELECT student_id, user_id, name, department, year, roll_number, phone, enrollment_date FROM student", (err, result) => {
     if (err) {
       console.log(err);
       res.status(500).send("Error fetching students");
@@ -162,92 +483,111 @@ app.get("/students", (req, res) => {
   });
 });
 
-app.post("/students", (req, res) => {
-  const { name, department, year, email, phone } = req.body;
+app.post("/students", verifyToken, checkRole(["admin"]), async (req, res) => {
+  const { name, department, year, phone, email, password } = req.body;
 
-  if (!name || !department || !year || !email || !phone) {
-    return res.status(400).send("All student fields are required");
+  if (!name || !department || !year || !phone) {
+    return res.status(400).json({ message: "Name, department, year, and phone are required" });
   }
 
-  const query = `
-    INSERT INTO student (name, department, year, email, phone)
-    VALUES (?, ?, ?, ?, ?)
-  `;
+  try {
+    // If email and password provided, create user account first
+    if (email && password) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      
+      db.query(
+        "INSERT INTO user (email, password, role) VALUES (?, ?, ?)",
+        [email, hashedPassword, "student"],
+        (err, userResult) => {
+          if (err) {
+            console.log(err);
+            if (err.code === "ER_DUP_ENTRY") {
+              return res.status(400).json({ message: "Email already exists" });
+            }
+            return res.status(500).json({ message: "Error creating user account" });
+          }
 
-  db.query(query, [name, department, year, email, phone], (err, result) => {
-    if (err) {
-      console.log("add student error", err);
-      const msg = err.message || "Error adding student";
-      return res.status(500).send(msg);
+          const userId = userResult.insertId;
+          const rollNumber = `STU${userId}${Date.now()}`.substring(0, 20);
+
+          // Create student record
+          db.query(
+            "INSERT INTO student (user_id, name, department, year, roll_number, phone) VALUES (?, ?, ?, ?, ?, ?)",
+            [userId, name, department, year, rollNumber, phone],
+            (studentErr, studentResult) => {
+              if (studentErr) {
+                console.log(studentErr);
+                return res.status(500).json({ message: "Error creating student profile" });
+              }
+
+              res.status(201).json({
+                message: "Student added successfully",
+                student_id: studentResult.insertId
+              });
+            }
+          );
+        }
+      );
+    } else {
+      return res.status(400).json({ message: "Email and password are required to create student account" });
     }
-
-    res.status(201).json({
-      message: "Student added successfully",
-      student_id: result.insertId
-    });
-  });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ message: "Server error" });
+  }
 });
 
-app.put("/students/:id", (req, res) => {
+app.put("/students/:id", verifyToken, checkRole(["admin"]), (req, res) => {
   const { id } = req.params;
-  const { name, department, year, email, phone } = req.body;
+  const { name, department, year, phone } = req.body;
 
-  if (!name || !department || !year || !email || !phone) {
-    return res.status(400).send("All student fields are required");
+  if (!name || !department || !year || !phone) {
+    return res.status(400).json({ message: "All student fields are required" });
   }
 
   const query = `
     UPDATE student
-    SET name = ?, department = ?, year = ?, email = ?, phone = ?
+    SET name = ?, department = ?, year = ?, phone = ?
     WHERE student_id = ?
   `;
 
-  db.query(query, [name, department, year, email, phone, id], (err, result) => {
+  db.query(query, [name, department, year, phone, id], (err, result) => {
     if (err) {
       console.log("update student error", err);
-      const msg = err.message || "Error updating student";
-      return res.status(500).send(msg);
+      return res.status(500).json({ message: "Error updating student" });
     }
 
     if (result.affectedRows === 0) {
-      return res.status(404).send("Student not found");
+      return res.status(404).json({ message: "Student not found" });
     }
 
     res.json({ message: "Student updated successfully" });
   });
 });
 
-app.delete("/students/:id", (req, res) => {
+app.delete("/students/:id", verifyToken, checkRole(["admin"]), (req, res) => {
   const { id } = req.params;
 
-  // some related tables may reference student_id (attendance, results, etc.)
-  // delete those first or rely on ON DELETE CASCADE in schema
-  // we'll remove attendance and results before deleting student
-
-  db.query("DELETE FROM attendance WHERE student_id = ?", [id], (attErr) => {
-    if (attErr) {
-      console.log("error deleting attendance for student", attErr);
-      return res.status(500).send("Error deleting related attendance records");
+  // Get user_id first
+  db.query("SELECT user_id FROM student WHERE student_id = ?", [id], (err, result) => {
+    if (err || !result.length) {
+      return res.status(404).json({ message: "Student not found" });
     }
 
-    db.query("DELETE FROM result WHERE student_id = ?", [id], (resErr) => {
-      if (resErr) {
-        console.log("error deleting results for student", resErr);
-        // continue; we don't want to block student deletion if result table doesn't exist
+    const userId = result[0].user_id;
+
+    // Delete student record
+    db.query("DELETE FROM student WHERE student_id = ?", [id], (err) => {
+      if (err) {
+        console.log(err);
+        return res.status(500).json({ message: "Error deleting student" });
       }
 
-      db.query("DELETE FROM student WHERE student_id = ?", [id], (err, result) => {
+      // Delete user account
+      db.query("DELETE FROM user WHERE user_id = ?", [userId], (err) => {
         if (err) {
           console.log(err);
-          // handle foreign key errors explicitly
-          if (err.code === "ER_ROW_IS_REFERENCED_2") {
-            return res.status(400).send("Cannot delete student; dependent records exist.");
-          }
-          return res.status(500).send("Error deleting student");
-        }
-
-        if (result.affectedRows === 0) {
-          return res.status(404).send("Student not found");
+          return res.status(500).json({ message: "Error deleting user account" });
         }
 
         res.json({ message: "Student deleted successfully" });
