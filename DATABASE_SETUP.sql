@@ -135,6 +135,7 @@ CREATE TABLE result (
   result_id INT PRIMARY KEY AUTO_INCREMENT,
   student_id INT NOT NULL,
   course_id INT NOT NULL,
+  exam_type ENUM('midsem','endsem','semester') DEFAULT 'semester',
   marks_obtained DECIMAL(5,2),
   total_marks DECIMAL(5,2) DEFAULT 100,
   grade VARCHAR(2),
