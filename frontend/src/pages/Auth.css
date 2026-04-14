@@ -233,6 +233,59 @@
   padding-right: 35px;
 }
 
+.password-input-wrap {
+  position: relative;
+}
+
+.password-input-wrap .form-control {
+  padding-right: 44px;
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: #667eea;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.forgot-link-wrap {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -8px;
+}
+
+.forgot-btn {
+  border: none;
+  background: transparent;
+  color: #667eea;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.forgot-btn:hover {
+  text-decoration: underline;
+}
+
+.forgot-form {
+  margin-top: 1.25rem;
+  border-top: 1px dashed #dfe6e9;
+  padding-top: 1rem;
+}
+
+.forgot-title {
+  margin-bottom: 1rem;
+  color: #2d3436;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
 /* Form Row for side-by-side inputs */
 .form-row {
   display: grid;
@@ -313,6 +366,65 @@
   color: #2d3436;
   display: block;
   margin-bottom: 5px;
+}
+
+/* Dark mode overrides */
+body[data-theme="dark"] .auth-card {
+  background: #1f2937;
+  color: #e5e7eb;
+}
+
+body[data-theme="dark"] .auth-header h1,
+body[data-theme="dark"] .form-group label,
+body[data-theme="dark"] .demo-credentials small strong {
+  color: #f3f4f6;
+}
+
+body[data-theme="dark"] .auth-header .subtitle,
+body[data-theme="dark"] .auth-footer p,
+body[data-theme="dark"] .demo-credentials {
+  color: #9ca3af;
+}
+
+body[data-theme="dark"] .auth-footer {
+  border-top-color: #374151;
+}
+
+body[data-theme="dark"] .form-control,
+body[data-theme="dark"] .form-select {
+  background: #111827;
+  border-color: #374151;
+  color: #e5e7eb;
+}
+
+body[data-theme="dark"] .forgot-title {
+  color: #f3f4f6;
+}
+
+body[data-theme="dark"] .forgot-form {
+  border-top-color: #374151;
+}
+
+body[data-theme="dark"] .password-toggle-btn,
+body[data-theme="dark"] .forgot-btn {
+  color: #93c5fd;
+}
+
+body[data-theme="dark"] .alert-danger {
+  background-color: #3b1f22;
+  color: #fecaca;
+  border-color: #7f1d1d;
+}
+
+body[data-theme="dark"] .alert-success {
+  background-color: #1d3b2a;
+  color: #bbf7d0;
+  border-color: #166534;
+}
+
+body[data-theme="dark"] .demo-credentials {
+  background: #111827;
+  border-left-color: #667eea;
 }
 
 /* Responsive Design */

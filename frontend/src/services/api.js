@@ -1,7 +1,13 @@
 import axios from "axios";
 
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:3001";
+
+if (!import.meta.env.VITE_API_BASE_URL) {
+  console.warn("VITE_API_BASE_URL missing. Falling back to http://localhost:3001");
+}
+
 const API = axios.create({
-  baseURL: "http://localhost:3001",
+  baseURL: apiBaseUrl,
 });
 
 // Add token to every request

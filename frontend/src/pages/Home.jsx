@@ -86,6 +86,10 @@ function Home() {
           padding-bottom: 3rem;
         }
 
+        body[data-theme="dark"] .home-container {
+          background: linear-gradient(135deg, #0f172a 0%, #1f2937 100%);
+        }
+
         .home-hero {
           text-align: center;
           padding: 4rem 2rem 3rem;
@@ -182,6 +186,23 @@ function Home() {
           color: #7f8c8d;
           margin-bottom: 0;
           flex-grow: 1;
+        }
+
+        body[data-theme="dark"] .module-card {
+          background-color: #1f2937 !important;
+          border-color: #374151;
+        }
+
+        body[data-theme="dark"] .module-title {
+          color: #f3f4f6;
+        }
+
+        body[data-theme="dark"] .module-description {
+          color: #cbd5e1;
+        }
+
+        body[data-theme="dark"] .module-icon {
+          color: #93c5fd;
         }
 
         .module-arrow {

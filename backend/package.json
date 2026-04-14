@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "node index.js",
+    "start": "node index.js",
+    "test": "node tests/security-guards.test.js",
+    "check": "node --check index.js"
   },
   "keywords": [],
   "author": "",
@@ -12,6 +15,7 @@
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.0",
     "mysql2": "^3.6.0"

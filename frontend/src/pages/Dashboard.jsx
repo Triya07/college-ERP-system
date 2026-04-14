@@ -44,41 +44,45 @@ function Dashboard() {
     }
   };
 
-  const StatCard = ({ icon: Icon, title, value, color, bgColor }) => (
-    <div
-      className="card stat-card"
-      style={{
-        background: `linear-gradient(135deg, ${bgColor} 0%, #fff 100%)`,
-        border: "none",
-        position: "relative",
-        overflow: "hidden"
-      }}
-    >
-      <div className="card-body text-center p-4">
-        <div
-          style={{
-            fontSize: "48px",
-            marginBottom: "1rem",
-            color,
-            opacity: 0.8
-          }}
-        >
-          <Icon />
+  const StatCard = ({ icon, title, value, color, bgColor }) => {
+    const Icon = icon;
+
+    return (
+      <div
+        className="card stat-card"
+        style={{
+          background: `linear-gradient(135deg, ${bgColor} 0%, #fff 100%)`,
+          border: "none",
+          position: "relative",
+          overflow: "hidden"
+        }}
+      >
+        <div className="card-body text-center p-4">
+          <div
+            style={{
+              fontSize: "48px",
+              marginBottom: "1rem",
+              color,
+              opacity: 0.8
+            }}
+          >
+            <Icon />
+          </div>
+          <h6 className="card-subtitle text-muted fw-bold">{title}</h6>
+          <h2
+            className="card-title mt-3"
+            style={{
+              color: "var(--text-main)",
+              fontWeight: "700",
+              fontSize: "2.5rem"
+            }}
+          >
+            {loading ? "..." : value}
+          </h2>
         </div>
-        <h6 className="card-subtitle text-muted fw-bold">{title}</h6>
-        <h2
-          className="card-title mt-3"
-          style={{
-            color: "#2c3e50",
-            fontWeight: "700",
-            fontSize: "2.5rem"
-          }}
-        >
-          {loading ? "..." : value}
-        </h2>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div>
@@ -103,7 +107,7 @@ function Dashboard() {
         </div>
       )}
 
-      <h2 className="mb-4 fw-bold" style={{ color: "#2c3e50" }}>
+      <h2 className="mb-4 fw-bold" style={{ color: "var(--text-main)" }}>
         📊 System Overview
       </h2>
 
@@ -138,7 +142,7 @@ function Dashboard() {
         />
       </div>
 
-      <h2 className="mb-4 fw-bold" style={{ color: "#2c3e50" }}>
+      <h2 className="mb-4 fw-bold" style={{ color: "var(--text-main)" }}>
         👥 Recent Students
       </h2>
       {loading ? (

@@ -2,11 +2,13 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { MdAdminPanelSettings, MdPerson, MdSchool } from "react-icons/md";
+import { useTheme } from "../context/ThemeContext";
 import "./RoleSelection.css";
 
 function RoleSelection() {
   const navigate = useNavigate();
   const { user, confirmRole } = useAuth();
+  const { isDark } = useTheme();
 
   // Get user's assigned role
   const userRole = user?.role;
@@ -65,20 +67,19 @@ function RoleSelection() {
     <div className="role-selection-container">
       <div className="role-selection-wrapper">
         <div className="role-selection-header">
-          <h1>Welcome, {user?.profile?.name || user?.email}!</h1>
+          <h1>Welcome, {user?.profile?.name || user?.username || user?.email}!</h1>
           <p>Confirming your role to proceed</p>
         </div>
 
         <div className="role-selection-grid-single">
           {role && (
             <div
-              className="role-card"
+              className={`role-card role-card-${userRole}`}
               style={{
-                backgroundColor: role.bgColor,
                 borderLeft: `5px solid ${role.color}`
               }}
             >
-              <div className="role-icon-wrapper" style={{ color: role.color }}>
+              <div className="role-icon-wrapper" style={{ color: isDark ? "#f8fafc" : role.color }}>
                 <role.icon size={80} />
               </div>
               <h2 className="role-title">{role.title}</h2>

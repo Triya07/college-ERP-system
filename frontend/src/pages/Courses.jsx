@@ -1,11 +1,16 @@
 import React, { useState, useEffect } from "react";
 import API from "../services/api";
+import { useAuth } from "../context/AuthContext";
 
 function Courses() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [courses, setCourses] = useState([]);
+  const [facultyList, setFacultyList] = useState([]);
   const [formData, setFormData] = useState({
     course_name: "",
-    department: ""
+    department: "",
+    faculty_id: ""
   });
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -25,9 +30,22 @@ function Courses() {
     }
   };
 
+  const fetchFaculty = async () => {
+    try {
+      const response = await API.get("/admin/faculty");
+      setFacultyList(response.data || []);
+    } catch (err) {
+      console.log(err);
+      setError("Could not load faculty list.");
+    }
+  };
+
   useEffect(() => {
     fetchCourses();
-  }, []);
+    if (isAdmin) {
+      fetchFaculty();
+    }
+  }, [isAdmin]);
 
   const handleChange = (e) => {
     setFormData({
@@ -39,7 +57,8 @@ function Courses() {
   const resetForm = () => {
     setFormData({
       course_name: "",
-      department: ""
+      department: "",
+      faculty_id: ""
     });
     setEditingId(null);
   };
@@ -69,7 +88,8 @@ function Courses() {
     setEditingId(course.course_id);
     setFormData({
       course_name: course.course_name || "",
-      department: course.department || ""
+      department: course.department || "",
+      faculty_id: course.faculty_id ? String(course.faculty_id) : ""
     });
   };
 
@@ -90,50 +110,68 @@ function Courses() {
 
   return (
     <div>
-      <h2 className="mb-4">Course & Faculty Management</h2>
+      <h2 className="mb-4">{isAdmin ? "Course & Faculty Management" : "My Assigned Courses"}</h2>
 
       {/* Add Course Form */}
-      <div className="bg-white shadow-sm rounded p-4 mb-4">
-        <h5>{editingId ? "Edit Course" : "Add New Course"}</h5>
-        <form onSubmit={handleSubmit}>
-          <div className="row g-3">
-            <div className="col-md-6">
-              <input
-                type="text"
-                name="course_name"
-                placeholder="Course Name"
-                className="form-control"
-                value={formData.course_name}
-                onChange={handleChange}
-                required
-              />
+      {isAdmin && (
+        <div className="bg-white shadow-sm rounded p-4 mb-4">
+          <h5>{editingId ? "Edit Course" : "Add New Course"}</h5>
+          <form onSubmit={handleSubmit}>
+            <div className="row g-3">
+              <div className="col-md-6">
+                <input
+                  type="text"
+                  name="course_name"
+                  placeholder="Course Name"
+                  className="form-control"
+                  value={formData.course_name}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+
+              <div className="col-md-6">
+                <input
+                  type="text"
+                  name="department"
+                  placeholder="Department"
+                  className="form-control"
+                  value={formData.department}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+
+              <div className="col-md-6">
+                <select
+                  name="faculty_id"
+                  className="form-select"
+                  value={formData.faculty_id}
+                  onChange={handleChange}
+                >
+                  <option value="">Unassigned Faculty</option>
+                  {facultyList.map((faculty) => (
+                    <option key={faculty.faculty_id} value={faculty.faculty_id}>
+                      {faculty.name} {faculty.department ? `(${faculty.department})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            <div className="col-md-6">
-              <input
-                type="text"
-                name="department"
-                placeholder="Department"
-                className="form-control"
-                value={formData.department}
-                onChange={handleChange}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="d-flex gap-2 mt-3">
-            <button type="submit" className="btn btn-success">
-              {editingId ? "Update Course" : "Add Course"}
-            </button>
-            {editingId && (
-              <button type="button" className="btn btn-secondary" onClick={resetForm}>
-                Cancel
+            <div className="d-flex gap-2 mt-3">
+              <button type="submit" className="btn btn-success">
+                {editingId ? "Update Course" : "Add Course"}
               </button>
-            )}
-          </div>
-        </form>
-      </div>
+              {editingId && (
+                <button type="button" className="btn btn-secondary" onClick={resetForm}>
+                  Cancel
+                </button>
+              )}
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Course Table */}
       <div className="bg-white shadow-sm rounded p-4">
@@ -147,14 +185,15 @@ function Courses() {
               <th>ID</th>
               <th>Course Name</th>
               <th>Department</th>
-              <th>Actions</th>
+              <th>Assigned Faculty</th>
+              {isAdmin && <th>Actions</th>}
             </tr>
           </thead>
           <tbody>
             {!loading && courses.length === 0 && (
               <tr>
-                <td colSpan="4" className="text-center">
-                  No courses found.
+                <td colSpan={isAdmin ? "5" : "4"} className="text-center">
+                  {isAdmin ? "No courses found." : "No courses assigned to you yet."}
                 </td>
               </tr>
             )}
@@ -164,24 +203,27 @@ function Courses() {
                 <td>{course.course_id}</td>
                 <td>{course.course_name}</td>
                 <td>{course.department}</td>
-                <td>
-                  <div className="d-flex gap-2">
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-primary"
-                      onClick={() => handleEdit(course)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-danger"
-                      onClick={() => handleDelete(course.course_id)}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </td>
+                <td>{course.faculty_name || "Unassigned"}</td>
+                {isAdmin && (
+                  <td>
+                    <div className="d-flex gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-primary"
+                        onClick={() => handleEdit(course)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-danger"
+                        onClick={() => handleDelete(course.course_id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

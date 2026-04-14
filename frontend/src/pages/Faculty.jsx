@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import API from "../services/api";
 import { MdAdd, MdEdit, MdDelete, MdSchool } from "react-icons/md";
-import axios from "axios";
 
 const initialForm = {
   name: "",
@@ -25,11 +24,7 @@ function Faculty() {
   const fetchFaculty = async () => {
     try {
       setLoading(true);
-      const response = await axios.get("http://localhost:3001/admin/faculty", {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`
-        }
-      });
+      const response = await API.get("/admin/faculty");
       setFaculty(response.data);
       setError("");
     } catch (err) {
@@ -64,8 +59,18 @@ function Faculty() {
 
     try {
       if (editingId) {
-        // Edit existing faculty - not yet implemented on backend
-        setError("Edit functionality coming soon");
+        await API.put(`/admin/faculty/${editingId}`, {
+          name: formData.name,
+          department: formData.department,
+          phone: formData.phone,
+          qualification: formData.qualification,
+          experience: parseInt(formData.experience) || 0
+        });
+
+        setSuccess("Faculty member updated successfully!");
+        resetForm();
+        setTimeout(() => setSuccess(""), 3000);
+        fetchFaculty();
       } else {
         // Add new faculty
         if (!formData.email || !formData.password || !formData.name) {
@@ -73,23 +78,15 @@ function Faculty() {
           return;
         }
 
-        await axios.post(
-          "http://localhost:3001/admin/faculty",
-          {
-            name: formData.name,
-            email: formData.email,
-            password: formData.password,
-            department: formData.department,
-            phone: formData.phone,
-            qualification: formData.qualification,
-            experience: parseInt(formData.experience) || 0
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem("token")}`
-            }
-          }
-        );
+        await API.post("/admin/faculty", {
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+          department: formData.department,
+          phone: formData.phone,
+          qualification: formData.qualification,
+          experience: parseInt(formData.experience) || 0
+        });
 
         setSuccess("Faculty member added successfully!");
         resetForm();
@@ -120,11 +117,7 @@ function Faculty() {
   const handleDelete = async (id) => {
     if (window.confirm("Are you sure you want to delete this faculty member?")) {
       try {
-        await axios.delete(`http://localhost:3001/admin/faculty/${id}`, {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`
-          }
-        });
+        await API.delete(`/admin/faculty/${id}`);
         setSuccess("Faculty member deleted successfully!");
         setTimeout(() => setSuccess(""), 3000);
         fetchFaculty();

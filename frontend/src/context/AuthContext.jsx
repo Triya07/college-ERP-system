@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect } from "react";
-import axios from "axios";
+import API from "../services/api";
 
 const AuthContext = createContext();
 
@@ -8,15 +8,6 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(localStorage.getItem("token"));
   const [roleConfirmed, setRoleConfirmed] = useState(localStorage.getItem("roleConfirmed") === "true");
-
-  // Set default axios header
-  useEffect(() => {
-    if (token) {
-      axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-    } else {
-      delete axios.defaults.headers.common["Authorization"];
-    }
-  }, [token]);
 
   // Verify token on mount
   useEffect(() => {
@@ -29,8 +20,10 @@ export const AuthProvider = ({ children }) => {
 
   const verifyToken = async () => {
     try {
-      const response = await axios.get("http://localhost:3001/auth/verify");
-      setUser(response.data.user);
+      const response = await API.get("/auth/verify");
+      const verifiedUser = response.data?.user || null;
+      const profile = response.data?.profile || {};
+      setUser(verifiedUser ? { ...verifiedUser, profile } : null);
     } catch (err) {
       console.log("Token verification failed:", err.message);
       localStorage.removeItem("token");
@@ -40,11 +33,12 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const login = async (email, password) => {
+  const login = async (email, password, role) => {
     try {
-      const response = await axios.post("http://localhost:3001/auth/login", {
+      const response = await API.post("/auth/login", {
         email,
-        password
+        password,
+        role
       });
       const { token, user, profile } = response.data;
       
@@ -79,12 +73,40 @@ export const AuthProvider = ({ children }) => {
 
   const signup = async (formData) => {
     try {
-      const response = await axios.post("http://localhost:3001/auth/signup", formData);
+      const response = await API.post("/auth/signup", formData);
       return { success: true, message: response.data.message };
     } catch (error) {
       return {
         success: false,
         message: error.response?.data?.message || "Signup failed"
+      };
+    }
+  };
+
+  const requestPasswordReset = async (email) => {
+    try {
+      const response = await API.post("/auth/forgot-password", { email });
+      return { success: true, ...response.data };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.message || "Could not request password reset"
+      };
+    }
+  };
+
+  const forgotPassword = async (email, token, newPassword) => {
+    try {
+      const response = await API.post("/auth/reset-password", {
+        email,
+        token,
+        newPassword
+      });
+      return { success: true, message: response.data.message };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.message || "Could not complete password reset"
       };
     }
   };
@@ -99,7 +121,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, token, login, signup, logout, roleConfirmed, confirmRole }}>
+    <AuthContext.Provider value={{ user, loading, token, login, signup, requestPasswordReset, forgotPassword, logout, roleConfirmed, confirmRole }}>
       {children}
     </AuthContext.Provider>
   );

@@ -15,11 +15,21 @@ import Attendance from "./pages/Attendance";
 import Results from "./pages/Results";
 import Home from "./pages/Home";
 import RoleSelection from "./pages/RoleSelection";
+import Timetable from "./pages/Timetable";
+import Fees from "./pages/Fees";
+import Notifications from "./pages/Notifications";
+import AnnouncementBoard from "./pages/AnnouncementBoard";
+import CourseRegistration from "./pages/CourseRegistration";
+import Classes from "./pages/Classes";
+import AcademicSettings from "./pages/AcademicSettings";
+import EnterpriseWorkflows from "./pages/EnterpriseWorkflows";
 
 // Components
 import ProtectedRoute from "./components/ProtectedRoute";
 import Sidebar from "./components/Sidebar";
 import Footer from "./components/Footer";
+import ThemeToggle from "./components/ThemeToggle";
+import { ThemeProvider } from "./context/ThemeContext";
 
 import "./App.css";
 
@@ -198,6 +208,158 @@ function AppRoutes() {
         }
       />
 
+      <Route
+        path="/timetable/*"
+        element={
+          <ProtectedRoute
+            element={
+              <>
+                <Sidebar />
+                <main className="main-content bg-light">
+                  <Routes>
+                    <Route path="/" element={<Timetable />} />
+                  </Routes>
+                </main>
+              </>
+            }
+            allowedRoles={["admin", "teacher", "student"]}
+          />
+        }
+      />
+
+      <Route
+        path="/fees/*"
+        element={
+          <ProtectedRoute
+            element={
+              <>
+                <Sidebar />
+                <main className="main-content bg-light">
+                  <Routes>
+                    <Route path="/" element={<Fees />} />
+                  </Routes>
+                </main>
+              </>
+            }
+            allowedRoles={["admin", "student"]}
+          />
+        }
+      />
+
+      <Route
+        path="/notifications/*"
+        element={
+          <ProtectedRoute
+            element={
+              <>
+                <Sidebar />
+                <main className="main-content bg-light">
+                  <Routes>
+                    <Route path="/" element={<Notifications />} />
+                  </Routes>
+                </main>
+              </>
+            }
+            allowedRoles={["admin", "teacher", "student"]}
+          />
+        }
+      />
+
+      <Route
+        path="/announcements/*"
+        element={
+          <ProtectedRoute
+            element={
+              <>
+                <Sidebar />
+                <main className="main-content bg-light">
+                  <Routes>
+                    <Route path="/" element={<AnnouncementBoard />} />
+                  </Routes>
+                </main>
+              </>
+            }
+            allowedRoles={["admin", "teacher", "student"]}
+          />
+        }
+      />
+
+      <Route
+        path="/classes/*"
+        element={
+          <ProtectedRoute
+            element={
+              <>
+                <Sidebar />
+                <main className="main-content bg-light">
+                  <Routes>
+                    <Route path="/" element={<Classes />} />
+                  </Routes>
+                </main>
+              </>
+            }
+            allowedRoles={["admin", "teacher", "student"]}
+          />
+        }
+      />
+
+      <Route
+        path="/settings/*"
+        element={
+          <ProtectedRoute
+            element={
+              <>
+                <Sidebar />
+                <main className="main-content bg-light">
+                  <Routes>
+                    <Route path="/" element={<AcademicSettings />} />
+                  </Routes>
+                </main>
+              </>
+            }
+            allowedRoles={["admin"]}
+          />
+        }
+      />
+
+      <Route
+        path="/course-registration/*"
+        element={
+          <ProtectedRoute
+            element={
+              <>
+                <Sidebar />
+                <main className="main-content bg-light">
+                  <Routes>
+                    <Route path="/" element={<CourseRegistration />} />
+                  </Routes>
+                </main>
+              </>
+            }
+            allowedRoles={["admin", "teacher", "student"]}
+          />
+        }
+      />
+
+      <Route
+        path="/enterprise-workflows/*"
+        element={
+          <ProtectedRoute
+            element={
+              <>
+                <Sidebar />
+                <main className="main-content bg-light">
+                  <Routes>
+                    <Route path="/" element={<EnterpriseWorkflows />} />
+                  </Routes>
+                </main>
+              </>
+            }
+            allowedRoles={["admin", "teacher", "student"]}
+          />
+        }
+      />
+
       {/* Catch all - redirect to home */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
@@ -207,14 +369,17 @@ function AppRoutes() {
 function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <div className="d-flex flex-column min-vh-100">
-          <div className="d-flex flex-grow-1">
-            <AppRoutes />
+      <ThemeProvider>
+        <AuthProvider>
+          <div className="d-flex flex-column min-vh-100">
+            <div className="d-flex flex-grow-1">
+              <AppRoutes />
+            </div>
+            <Footer />
+            <ThemeToggle />
           </div>
-          <Footer />
-        </div>
-      </AuthProvider>
+        </AuthProvider>
+      </ThemeProvider>
     </BrowserRouter>
   );
 }

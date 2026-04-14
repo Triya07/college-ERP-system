@@ -28,9 +28,9 @@ Your college ERP system has been completely restructured with **role-based dashb
    -- 1. DATABASE_SETUP.sql (creates schema with new user, faculty tables)
    ```
 
-2. **Add demo data (optional):**
+2. **Seed only required bootstrap data (optional):**
    ```sql
-   -- 2. DATABASE_DEMO.sql (creates demo accounts and test data)
+   -- Use institution-specific seed scripts only (no shared demo credentials)
    ```
 
 ### Step 2: Backend Setup
@@ -78,15 +78,10 @@ Your college ERP system has been completely restructured with **role-based dashb
 
 ---
 
-## 🔐 Demo Accounts
+## Initial Access
 
-Use these accounts to test different roles:
-
-| Role | Email | Password | Dashboard Access |
-|------|-------|----------|------------------|
-| Admin | `admin@college.com` | `admin123` | Admin Dashboard |
-| Teacher | `teacher@college.com` | `teacher123` | Teacher Dashboard |
-| Student | `student@college.com` | `student123` | Student Dashboard |
+Use the seeded admin email from your SQL setup and rotate credentials immediately after first login.
+Create teacher and student accounts from the admin panel instead of using shared static demo passwords.
 
 ---
 
@@ -181,7 +176,7 @@ college-ERP-system/
 │   ├── package.json
 │   └── ...
 ├── DATABASE_SETUP.sql (UPDATED - User & Faculty tables)
-├── DATABASE_DEMO.sql (NEW - Demo data)
+├── (optional) institution seed SQL scripts
 └── README.md (NEW - This file)
 ```
 
@@ -251,7 +246,7 @@ Students and teachers can only access data relevant to them (implement row-level
 
 ### "Cannot connect to MySQL"
 - Verify MySQL is running
-- Check DB_PASSWORD in backend/index.js
+- Check `DB_PASSWORD` in `backend/.env`
 - Check database name: `college_erp`
 
 ### "Login not working"
@@ -264,10 +259,10 @@ Students and teachers can only access data relevant to them (implement row-level
 - Verify JWT_SECRET matches
 - Check user role in database
 
-### "Demo accounts not working"
-- Run `DATABASE_DEMO.sql` after `DATABASE_SETUP.sql`
-- Clear browser localStorage
-- Try creating a new account instead
+### "Initial admin login not working"
+- Re-run `DATABASE_SETUP.sql` to seed admin rows
+- Verify `DEFAULT_ADMIN_EMAIL` and DB records match
+- Reset password from admin once login succeeds
 
 ---
 
@@ -332,3 +327,5 @@ Your college ERP system is now fully functional with role-based dashboards and a
 
 **Last Updated:** March 2026
 **Version:** 2.0 (Role-Based Dashboards)
+
+

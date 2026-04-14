@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import "./Auth.css";
-import { AiOutlineMail, AiOutlineLock, AiOutlineUser, AiOutlineBook } from "react-icons/ai";
+import { AiOutlineMail, AiOutlineLock, AiOutlineUser, AiOutlineBook, AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
 
 function Auth() {
   const [isLogin, setIsLogin] = useState(true);
@@ -18,7 +18,16 @@ function Auth() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
-  const { login, signup } = useAuth();
+  const [showPassword, setShowPassword] = useState(false);
+  const [showForgotForm, setShowForgotForm] = useState(false);
+  const [resetData, setResetData] = useState({
+    email: "",
+    token: "",
+    newPassword: "",
+    confirmPassword: ""
+  });
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const { login, signup, requestPasswordReset, forgotPassword } = useAuth();
   const navigate = useNavigate();
 
   const handleChange = (e) => {
@@ -34,7 +43,7 @@ function Auth() {
 
     try {
       if (isLogin) {
-        const result = await login(formData.email, formData.password);
+        const result = await login(formData.email, formData.password, formData.role);
         if (result.success) {
           setSuccess("Login successful! Redirecting...");
           setTimeout(() => navigate("/role-selection"), 1500);
@@ -55,6 +64,61 @@ function Auth() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResetChange = (e) => {
+    const { name, value } = e.target;
+    setResetData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleForgotSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+
+    if (!resetData.email) {
+      setError("Email is required");
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      if (!resetData.token) {
+        const requestResult = await requestPasswordReset(resetData.email);
+        if (requestResult.success) {
+          const tokenMessage = requestResult.reset_token
+            ? ` Reset Token: ${requestResult.reset_token}`
+            : "";
+          setSuccess(`${requestResult.message}${tokenMessage}`);
+        } else {
+          setError(requestResult.message);
+        }
+        return;
+      }
+
+      if (!resetData.newPassword || !resetData.confirmPassword) {
+        setError("New password and confirm password are required");
+        return;
+      }
+
+      if (resetData.newPassword !== resetData.confirmPassword) {
+        setError("New password and confirm password do not match");
+        return;
+      }
+
+      const result = await forgotPassword(resetData.email, resetData.token, resetData.newPassword);
+      if (result.success) {
+        setSuccess(result.message);
+        setShowForgotForm(false);
+        setIsLogin(true);
+        setFormData((prev) => ({ ...prev, email: resetData.email, password: "" }));
+        setResetData({ email: "", token: "", newPassword: "", confirmPassword: "" });
+      } else {
+        setError(result.message);
+      }
+    } finally {
+      setForgotLoading(false);
     }
   };
 
@@ -105,7 +169,6 @@ function Auth() {
                   >
                     <option value="student">Student</option>
                     <option value="teacher">Teacher/Faculty</option>
-                    <option value="admin">Administrator</option>
                   </select>
                 </div>
 
@@ -157,6 +220,21 @@ function Auth() {
           )}
 
           <div className="form-group animate-fade-in">
+            <label htmlFor="loginRole">Login Role</label>
+            <select
+              id="loginRole"
+              name="role"
+              value={formData.role}
+              onChange={handleChange}
+              className="form-control form-select"
+            >
+              <option value="student">Student</option>
+              <option value="teacher">Teacher/Faculty</option>
+              <option value="admin">Administrator</option>
+            </select>
+          </div>
+
+          <div className="form-group animate-fade-in">
             <label htmlFor="email">
               <AiOutlineMail className="input-icon" /> Email Address
             </label>
@@ -176,17 +254,43 @@ function Auth() {
             <label htmlFor="password">
               <AiOutlineLock className="input-icon" /> Password
             </label>
-            <input
-              type="password"
-              id="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              placeholder="••••••••"
-              required
-              className="form-control"
-            />
+            <div className="password-input-wrap">
+              <input
+                type={showPassword ? "text" : "password"}
+                id="password"
+                name="password"
+                value={formData.password}
+                onChange={handleChange}
+                placeholder="••••••••"
+                required
+                className="form-control"
+              />
+              <button
+                type="button"
+                className="password-toggle-btn"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <AiOutlineEyeInvisible /> : <AiOutlineEye />}
+              </button>
+            </div>
           </div>
+
+          {isLogin && (
+            <div className="forgot-link-wrap">
+              <button
+                type="button"
+                className="forgot-btn"
+                onClick={() => {
+                  setShowForgotForm((prev) => !prev);
+                  setError("");
+                  setSuccess("");
+                }}
+              >
+                {showForgotForm ? "Cancel password reset" : "Forgot password?"}
+              </button>
+            </div>
+          )}
 
           <button
             type="submit"
@@ -196,6 +300,70 @@ function Auth() {
             {loading ? "Processing..." : isLogin ? "Sign In" : "Create Account"}
           </button>
         </form>
+
+        {isLogin && showForgotForm && (
+          <form onSubmit={handleForgotSubmit} className="forgot-form animate-fade-in">
+            <h4 className="forgot-title">Reset Password</h4>
+
+            <div className="form-group">
+              <label htmlFor="resetEmail">Registered Email</label>
+              <input
+                type="email"
+                id="resetEmail"
+                name="email"
+                value={resetData.email}
+                onChange={handleResetChange}
+                className="form-control"
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="newPassword">New Password</label>
+              <input
+                type="password"
+                id="newPassword"
+                name="newPassword"
+                value={resetData.newPassword}
+                onChange={handleResetChange}
+                className="form-control"
+                required
+                minLength={6}
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="resetToken">Reset Token</label>
+              <input
+                type="text"
+                id="resetToken"
+                name="token"
+                value={resetData.token}
+                onChange={handleResetChange}
+                className="form-control"
+                placeholder="Request token first, then paste here"
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="confirmPassword">Confirm New Password</label>
+              <input
+                type="password"
+                id="confirmPassword"
+                name="confirmPassword"
+                value={resetData.confirmPassword}
+                onChange={handleResetChange}
+                className="form-control"
+                required
+                minLength={6}
+              />
+            </div>
+
+            <button type="submit" className="btn-auth" disabled={forgotLoading}>
+              {forgotLoading ? "Processing..." : resetData.token ? "Reset Password" : "Request Reset Token"}
+            </button>
+          </form>
+        )}
 
         <div className="auth-footer">
           <p>
@@ -214,17 +382,6 @@ function Auth() {
           </p>
         </div>
 
-        <div className="demo-credentials">
-          <small>
-            <strong>Demo Accounts:</strong>
-            <br />
-            Admin: admin@college.com / admin123
-            <br />
-            Teacher: teacher@college.com / teacher123
-            <br />
-            Student: student@college.com / student123
-          </small>
-        </div>
       </div>
     </div>
   );

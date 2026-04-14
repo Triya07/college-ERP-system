@@ -28,6 +28,10 @@
   min-height: 100vh;
 }
 
+body[data-theme="dark"] .dashboard-container {
+  background: linear-gradient(135deg, #0f172a 0%, #1f2937 100%);
+}
+
 /* Dashboard Header */
 .dashboard-header {
   display: flex;
@@ -39,6 +43,36 @@
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   animation: slideUp 0.6s ease-out;
+}
+
+body[data-theme="dark"] .dashboard-header,
+body[data-theme="dark"] .stat-card,
+body[data-theme="dark"] .feature-card,
+body[data-theme="dark"] .course-card,
+body[data-theme="dark"] .quick-actions,
+body[data-theme="dark"] .quick-stats,
+body[data-theme="dark"] .performance-card {
+  background: #1f2937;
+  color: #e5e7eb;
+}
+
+body[data-theme="dark"] .dashboard-header h1,
+body[data-theme="dark"] .section-title,
+body[data-theme="dark"] .feature-card h3,
+body[data-theme="dark"] .course-header h3,
+body[data-theme="dark"] .stat-number,
+body[data-theme="dark"] .quick-actions h3,
+body[data-theme="dark"] .quick-stats h3,
+body[data-theme="dark"] .performance-card h3 {
+  color: #f3f4f6;
+}
+
+body[data-theme="dark"] .dashboard-header .subtitle,
+body[data-theme="dark"] .stat-content h3,
+body[data-theme="dark"] .feature-card p,
+body[data-theme="dark"] .course-info,
+body[data-theme="dark"] .metric span {
+  color: #9ca3af;
 }
 
 .dashboard-header h1 {
@@ -336,6 +370,89 @@
   margin-top: 15px;
 }
 
+.today-classes-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.today-class-card {
+  background: white;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  padding: 12px;
+}
+
+body[data-theme="dark"] .today-class-card {
+  background: #111827;
+  border-color: #374151;
+}
+
+.attendance-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.attendance-calendar-cell {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  min-height: 54px;
+  padding: 6px;
+  background: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.attendance-calendar-cell.empty {
+  background: transparent;
+  border-style: dashed;
+}
+
+.attendance-day-number {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.attendance-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.attendance-dot.present {
+  background: #22c55e;
+}
+
+.attendance-dot.absent {
+  background: #ef4444;
+}
+
+.attendance-dot.mixed {
+  background: #f59e0b;
+}
+
+.attendance-dot.none {
+  background: #d1d5db;
+}
+
+.attendance-calendar-cell.today {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 1px #2563eb;
+}
+
+body[data-theme="dark"] .attendance-calendar-cell {
+  background: #111827;
+  border-color: #374151;
+}
+
+body[data-theme="dark"] .attendance-day-number {
+  color: #e5e7eb;
+}
+
 /* Quick Stats */
 .quick-stats {
   background: white;
@@ -406,6 +523,7 @@
   padding: 20px;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 10px;
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
 }
 

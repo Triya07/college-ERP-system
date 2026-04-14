@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import API from "../services/api";
 import { MdDashboard, MdPeople, MdBook, MdSchool, MdInsertChart } from "react-icons/md";
 import "./Dashboard.css";
 
@@ -24,11 +24,7 @@ function AdminDashboard() {
   const fetchStats = async () => {
     try {
       setLoading(true);
-      const response = await axios.get("http://localhost:3001/admin/stats", {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`
-        }
-      });
+      const response = await API.get("/admin/stats");
       
       setStats(response.data);
       setError("");
@@ -74,7 +70,7 @@ function AdminDashboard() {
       <div className="dashboard-header">
         <div>
           <h1 className="animate-slide-up">Admin Dashboard</h1>
-          <p className="subtitle">Welcome, {user?.profile?.name || user?.email}! 👋</p>
+          <p className="subtitle">Welcome, {user?.profile?.name || user?.username || user?.email}! 👋</p>
         </div>
         <button onClick={handleLogout} className="btn btn-danger">
           Logout
@@ -132,6 +128,15 @@ function AdminDashboard() {
       </div>
 
       {/* Features Grid */}
+      <div className="mb-4 d-flex gap-2 flex-wrap">
+        <button className="btn btn-outline-primary" onClick={() => handleNavigate("/students")}>Users</button>
+        <button className="btn btn-outline-primary" onClick={() => handleNavigate("/courses")}>Courses</button>
+        <button className="btn btn-outline-primary" onClick={() => handleNavigate("/classes")}>Classes</button>
+        <button className="btn btn-outline-primary" onClick={() => handleNavigate("/attendance")}>Attendance</button>
+        <button className="btn btn-outline-primary" onClick={() => handleNavigate("/settings")}>Settings</button>
+        <button className="btn btn-outline-primary" onClick={() => handleNavigate("/notifications")}>Notifications</button>
+      </div>
+
       <div className="features-section">
         <h2 className="section-title">Admin Controls</h2>
         <div className="features-grid">

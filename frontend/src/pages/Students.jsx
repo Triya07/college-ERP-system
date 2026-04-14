@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import API from "../services/api";
-import { MdAdd, MdEdit, MdDelete, MdBook } from "react-icons/md";
+import { MdAdd, MdEdit, MdDelete } from "react-icons/md";
 
 const initialForm = {
   name: "",
@@ -19,6 +19,9 @@ function Students() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [departmentFilter, setDepartmentFilter] = useState("all");
+  const [semesterFilter, setSemesterFilter] = useState("all");
+  const [showGroupedView, setShowGroupedView] = useState(false);
 
   const fetchStudents = async () => {
     try {
@@ -116,6 +119,36 @@ function Students() {
       setError(msg);
     }
   };
+
+  const semesterLabel = (yearValue) => {
+    const year = Number(yearValue) || 1;
+    return `Sem ${Math.max((year - 1) * 2 + 1, 1)}-${Math.max(year * 2, 2)}`;
+  };
+
+  const departmentOptions = [
+    "all",
+    ...new Set((students || []).map((item) => item.department).filter(Boolean))
+  ];
+
+  const semesterOptions = [
+    "all",
+    ...new Set((students || []).map((item) => String(item.year || "")).filter(Boolean))
+  ];
+
+  const filteredStudents = students.filter((student) => {
+    const departmentMatch = departmentFilter === "all" || student.department === departmentFilter;
+    const semesterMatch = semesterFilter === "all" || String(student.year) === semesterFilter;
+    return departmentMatch && semesterMatch;
+  });
+
+  const groupedStudents = filteredStudents.reduce((acc, student) => {
+    const key = `${student.department || "General"} | ${semesterLabel(student.year)}`;
+    if (!acc[key]) {
+      acc[key] = [];
+    }
+    acc[key].push(student);
+    return acc;
+  }, {});
 
   return (
     <div>
@@ -289,6 +322,60 @@ function Students() {
           </h5>
         </div>
 
+        <div className="card-body border-bottom">
+          <div className="row g-3 align-items-end">
+            <div className="col-md-4">
+              <label className="form-label">Filter by Department</label>
+              <select
+                className="form-select"
+                value={departmentFilter}
+                onChange={(e) => setDepartmentFilter(e.target.value)}
+              >
+                {departmentOptions.map((item) => (
+                  <option key={item} value={item}>
+                    {item === "all" ? "All Departments" : item}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="col-md-4">
+              <label className="form-label">Filter by Semester Group</label>
+              <select
+                className="form-select"
+                value={semesterFilter}
+                onChange={(e) => setSemesterFilter(e.target.value)}
+              >
+                {semesterOptions.map((item) => (
+                  <option key={item} value={item}>
+                    {item === "all" ? "All Semesters" : semesterLabel(item)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="col-md-4 d-flex gap-2">
+              <button
+                type="button"
+                className="btn btn-outline-primary"
+                onClick={() => setShowGroupedView((prev) => !prev)}
+              >
+                {showGroupedView ? "Show Table View" : "Show Grouped View"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline-secondary"
+                onClick={() => {
+                  setDepartmentFilter("all");
+                  setSemesterFilter("all");
+                }}
+              >
+                Reset Filters
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div className="card-body p-0">
           {loading ? (
             <div className="text-center p-5">
@@ -297,9 +384,62 @@ function Students() {
               </div>
               <p className="mt-3 text-muted">Loading students...</p>
             </div>
-          ) : students.length === 0 ? (
+          ) : filteredStudents.length === 0 ? (
             <div className="alert alert-info m-4" role="alert">
-              ℹ️ No students found. Add your first student above.
+              ℹ️ No students found for the selected filters.
+            </div>
+          ) : showGroupedView ? (
+            <div className="p-3">
+              {Object.entries(groupedStudents).map(([group, members]) => (
+                <div className="card mb-3" key={group}>
+                  <div className="card-header bg-light">
+                    <strong>{group}</strong> - {members.length} student(s)
+                  </div>
+                  <div className="card-body p-0">
+                    <div className="table-responsive">
+                      <table className="table mb-0">
+                        <thead>
+                          <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Phone</th>
+                            <th>Roll Number</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {members.map((student) => (
+                            <tr key={student.student_id}>
+                              <td>{student.student_id}</td>
+                              <td className="fw-bold">{student.name}</td>
+                              <td>{student.phone}</td>
+                              <td>
+                                <small className="text-muted">{student.roll_number || "N/A"}</small>
+                              </td>
+                              <td>
+                                <button
+                                  className="btn btn-sm btn-warning me-2"
+                                  onClick={() => handleEdit(student)}
+                                  title="Edit"
+                                >
+                                  <MdEdit size={16} />
+                                </button>
+                                <button
+                                  className="btn btn-sm btn-danger"
+                                  onClick={() => handleDelete(student.student_id)}
+                                  title="Delete"
+                                >
+                                  <MdDelete size={16} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           ) : (
             <div className="table-responsive">
@@ -316,7 +456,7 @@ function Students() {
                   </tr>
                 </thead>
                 <tbody>
-                  {students.map((student) => (
+                  {filteredStudents.map((student) => (
                     <tr key={student.student_id}>
                       <td>
                         <span
@@ -329,7 +469,7 @@ function Students() {
                       <td className="fw-bold">{student.name}</td>
                       <td>{student.department}</td>
                       <td>
-                        <span className="badge bg-info">{student.year}</span>
+                        <span className="badge bg-info">{semesterLabel(student.year)}</span>
                       </td>
                       <td>{student.phone}</td>
                       <td>
