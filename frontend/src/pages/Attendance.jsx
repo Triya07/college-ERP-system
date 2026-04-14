@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
 import API from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import {
+  ATTENDANCE_TARGET_PERCENTAGE,
+  buildCourseAttendanceInsights,
+  calculateRecoveryPlan
+} from "../services/attendanceInsights";
 
 function Attendance() {
   const { user } = useAuth();
@@ -168,6 +173,18 @@ function Attendance() {
   const uniqueStudentIds = [
     ...new Set(attendanceRecords.map((rec) => rec.student_id))
   ];
+
+  const studentCourseInsights = isStudent
+    ? buildCourseAttendanceInsights(attendanceRecords, ATTENDANCE_TARGET_PERCENTAGE)
+    : [];
+
+  const studentOverallInsight = isStudent
+    ? calculateRecoveryPlan({
+        present: attendanceRecords.filter((rec) => rec.status === "Present").length,
+        total: attendanceRecords.length,
+        targetPercentage: ATTENDANCE_TARGET_PERCENTAGE
+      })
+    : null;
 
   return (
     <div>
@@ -344,6 +361,56 @@ function Attendance() {
               return cells;
             })()}
           </div>
+        </div>
+      )}
+
+      {isStudent && (
+        <div className="bg-white shadow-sm rounded p-4 mb-4">
+          <h5>Attendance Alerts & Prediction</h5>
+
+          <div className={`alert ${studentOverallInsight?.belowTarget ? "alert-danger" : "alert-success"} mt-3`}>
+            {studentOverallInsight?.hasData ? (
+              <>
+                Overall attendance is <strong>{studentOverallInsight.currentPercentage.toFixed(2)}%</strong>.
+                {studentOverallInsight.belowTarget
+                  ? ` Attend the next ${studentOverallInsight.classesNeededToReachTarget} classes without absence to recover above ${ATTENDANCE_TARGET_PERCENTAGE}%.`
+                  : ` You are above ${ATTENDANCE_TARGET_PERCENTAGE}%. Keep consistency to stay safe.`}
+              </>
+            ) : (
+              <>No attendance records are available yet for prediction.</>
+            )}
+          </div>
+
+          {studentCourseInsights.length === 0 ? (
+            <p className="text-muted mb-0">No course-wise attendance records found.</p>
+          ) : (
+            <div className="table-responsive">
+              <table className="table table-bordered align-middle mb-0 mt-3">
+                <thead>
+                  <tr>
+                    <th>Course</th>
+                    <th>Current %</th>
+                    <th>Status</th>
+                    <th>Prediction</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {studentCourseInsights.map((item) => (
+                    <tr key={`insight-${item.course_id}`}>
+                      <td>{item.course_name}</td>
+                      <td>{item.percentage}%</td>
+                      <td>
+                        <span className={`badge ${item.analysis.belowTarget ? "bg-danger" : "bg-success"}`}>
+                          {item.analysis.belowTarget ? "Below 75%" : "Safe"}
+                        </span>
+                      </td>
+                      <td>{item.recommendation}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

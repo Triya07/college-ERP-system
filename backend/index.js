@@ -50,6 +50,493 @@ const queryAsync = (sql, params = []) =>
     });
   });
 
+const ATTENDANCE_WARNING_THRESHOLD = 75;
+
+const calculateClassesNeededForThreshold = (presentCount, totalCount, threshold = ATTENDANCE_WARNING_THRESHOLD) => {
+  const present = Number(presentCount) || 0;
+  const total = Number(totalCount) || 0;
+  const ratio = Number(threshold) / 100;
+
+  if (total <= 0 || present / total >= ratio) {
+    return 0;
+  }
+
+  return Math.max(0, Math.ceil((ratio * total - present) / (1 - ratio)));
+};
+
+const buildAttendanceAlertTitle = (courseName, courseId) =>
+  `Attendance Alert - ${courseName} (#${courseId})`;
+
+const getStudentCourseAttendanceStats = async (studentId) => {
+  const normalizedStudentId = Number(studentId);
+  if (!normalizedStudentId) return [];
+
+  return queryAsync(
+    `
+      SELECT
+        agg.course_id,
+        c.course_name,
+        SUM(CASE WHEN agg.status = 'present' THEN 1 ELSE 0 END) AS present_count,
+        COUNT(*) AS total_count
+      FROM (
+        SELECT course_id, LOWER(status) AS status
+        FROM attendance
+        WHERE student_id = ?
+
+        UNION ALL
+
+        SELECT cg.course_id AS course_id, LOWER(ca.status) AS status
+        FROM class_attendance ca
+        JOIN class_group cg ON cg.class_id = ca.class_id
+        WHERE ca.student_id = ?
+      ) agg
+      JOIN course c ON c.course_id = agg.course_id
+      GROUP BY agg.course_id, c.course_name
+    `,
+    [normalizedStudentId, normalizedStudentId]
+  );
+};
+
+const syncNotificationGroupByPrefix = async ({ userId, prefix, items, actorUserId = null }) => {
+  if (!userId || !prefix) return;
+
+  const existingRows = await queryAsync(
+    "SELECT notification_id, title, message, category, is_read FROM notification WHERE user_id = ? AND title LIKE ?",
+    [userId, `${prefix}%`]
+  );
+
+  const existingByTitle = new Map(existingRows.map((row) => [String(row.title), row]));
+  const activeTitles = new Set();
+
+  for (const item of items) {
+    const title = String(item.title || "").trim();
+    const message = String(item.message || "").trim();
+    if (!title || !message) continue;
+
+    activeTitles.add(title);
+    const existing = existingByTitle.get(title);
+    const normalizedCategory = item.category || "General";
+
+    if (existing) {
+      const changed = String(existing.message || "") !== message || String(existing.category || "") !== String(normalizedCategory);
+      if (changed) {
+        await queryAsync(
+          "UPDATE notification SET message = ?, category = ?, is_read = FALSE WHERE notification_id = ?",
+          [message, normalizedCategory, existing.notification_id]
+        );
+      }
+    } else {
+      await queryAsync(
+        "INSERT INTO notification (user_id, title, message, category, created_by) VALUES (?, ?, ?, ?, ?)",
+        [userId, title, message, normalizedCategory, actorUserId || null]
+      );
+    }
+  }
+
+  for (const row of existingRows) {
+    if (!activeTitles.has(String(row.title))) {
+      await queryAsync("UPDATE notification SET is_read = TRUE WHERE notification_id = ?", [row.notification_id]);
+    }
+  }
+};
+
+const buildAttendanceMilestoneItems = (studentName, attendanceStats) => {
+  const items = [];
+
+  for (const row of attendanceStats) {
+    const presentCount = Number(row.present_count || 0);
+    const totalCount = Number(row.total_count || 0);
+    if (!totalCount) continue;
+
+    const percentage = (presentCount * 100) / totalCount;
+    if (percentage >= 90) continue;
+
+    const courseName = String(row.course_name || "Course");
+    const courseId = Number(row.course_id || 0);
+    let bandText = "below 90%";
+    let category = "Academic";
+
+    if (percentage < 70) {
+      bandText = "below 70%";
+      category = "Urgent";
+    } else if (percentage < 75) {
+      bandText = "below 75%";
+      category = "Urgent";
+    } else if (percentage < 80) {
+      bandText = "below 80%";
+      category = "Academic";
+    }
+
+    items.push({
+      title: `AUTO: Attendance Milestone - ${courseName} (#${courseId})`,
+      message: `${studentName}, your attendance in ${courseName} is ${percentage.toFixed(2)}% (${bandText}).`,
+      category
+    });
+  }
+
+  return items;
+};
+
+const buildExamReminderItems = async (studentId) => {
+  const rows = await queryAsync(
+    `
+      SELECT
+        ew.exam_id,
+        ew.exam_title,
+        ew.exam_date,
+        c.course_name,
+        DATEDIFF(DATE(ew.exam_date), CURDATE()) AS days_left
+      FROM exam_workflow ew
+      JOIN course c ON c.course_id = ew.course_id
+      JOIN student_course sc ON sc.course_id = ew.course_id
+      WHERE sc.student_id = ?
+        AND ew.publish_status = 'published'
+        AND DATEDIFF(DATE(ew.exam_date), CURDATE()) IN (7, 3, 1)
+      ORDER BY ew.exam_date ASC
+    `,
+    [studentId]
+  );
+
+  return rows.map((row) => {
+    const daysLeft = Number(row.days_left);
+    return {
+      title: `AUTO: Exam Reminder - ${row.exam_title} (#${row.exam_id}) [${daysLeft}d]`,
+      message: `${row.exam_title} (${row.course_name}) is in ${daysLeft} day(s) on ${new Date(row.exam_date).toLocaleDateString()}.`,
+      category: daysLeft <= 1 ? "Urgent" : "Exam"
+    };
+  });
+};
+
+const buildAssignmentAlertItems = async (studentId) => {
+  const rows = await queryAsync(
+    `
+      SELECT
+        la.assignment_id,
+        la.title,
+        la.due_date,
+        c.course_name,
+        ls.submission_id,
+        DATEDIFF(DATE(la.due_date), CURDATE()) AS days_left
+      FROM lms_assignment la
+      JOIN course c ON c.course_id = la.course_id
+      JOIN student_course sc ON sc.course_id = la.course_id
+      LEFT JOIN lms_submission ls
+        ON ls.assignment_id = la.assignment_id AND ls.student_id = sc.student_id
+      WHERE sc.student_id = ?
+        AND la.status IN ('published', 'closed')
+        AND la.due_date IS NOT NULL
+    `,
+    [studentId]
+  );
+
+  const items = [];
+  for (const row of rows) {
+    if (row.submission_id) continue;
+    const daysLeft = Number(row.days_left);
+
+    if ([7, 3, 1].includes(daysLeft)) {
+      items.push({
+        title: `AUTO: Assignment Reminder - ${row.title} (#${row.assignment_id}) [${daysLeft}d]`,
+        message: `Assignment ${row.title} (${row.course_name}) is due in ${daysLeft} day(s).`,
+        category: daysLeft <= 1 ? "Urgent" : "Academic"
+      });
+    }
+
+    if (daysLeft < 0) {
+      items.push({
+        title: `AUTO: Assignment Overdue - ${row.title} (#${row.assignment_id})`,
+        message: `Assignment ${row.title} (${row.course_name}) is overdue. Submit as soon as possible.`,
+        category: "Urgent"
+      });
+    }
+  }
+
+  return items;
+};
+
+const buildFeeAlertItems = async (studentId) => {
+  const rows = await queryAsync(
+    `
+      SELECT fee_id, fee_type, semester, amount_due, amount_paid, due_date, status, updated_at,
+             DATEDIFF(DATE(due_date), CURDATE()) AS days_left
+      FROM fee_record
+      WHERE student_id = ?
+    `,
+    [studentId]
+  );
+
+  const items = [];
+  for (const row of rows) {
+    const amountDue = Number(row.amount_due || 0).toFixed(2);
+    const amountPaid = Number(row.amount_paid || 0).toFixed(2);
+    const daysLeft = Number(row.days_left);
+    const status = String(row.status || "Pending");
+    const label = `${row.fee_type || "Fee"} (${row.semester || "Semester"})`;
+
+    if (row.due_date && status !== "Paid" && [7, 3, 1].includes(daysLeft)) {
+      items.push({
+        title: `AUTO: Fee Due - ${label} (#${row.fee_id}) [${daysLeft}d]`,
+        message: `${label} payment of ${amountDue} is due in ${daysLeft} day(s). Paid: ${amountPaid}.`,
+        category: daysLeft <= 1 ? "Urgent" : "Fees"
+      });
+    }
+
+    if (row.due_date && status !== "Paid" && daysLeft < 0) {
+      items.push({
+        title: `AUTO: Fee Overdue - ${label} (#${row.fee_id})`,
+        message: `${label} is overdue. Due amount: ${amountDue}, paid: ${amountPaid}.`,
+        category: "Urgent"
+      });
+    }
+
+    if (status === "Paid") {
+      items.push({
+        title: `AUTO: Fee Payment Received - ${label} (#${row.fee_id})`,
+        message: `Payment received for ${label}. Amount paid: ${amountPaid}.`,
+        category: "Fees"
+      });
+    }
+  }
+
+  return items;
+};
+
+const buildTimetableUpdateItems = async (studentId) => {
+  const rows = await queryAsync(
+    `
+      SELECT t.timetable_id, t.day_of_week, t.start_time, t.end_time, t.room_number, c.course_name
+      FROM timetable_entry t
+      JOIN student_course sc ON sc.course_id = t.course_id
+      JOIN course c ON c.course_id = t.course_id
+      WHERE sc.student_id = ?
+        AND DATE(t.created_at) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+      ORDER BY t.created_at DESC
+    `,
+    [studentId]
+  );
+
+  return rows.map((row) => ({
+    title: `AUTO: Timetable Update - ${row.course_name} (#${row.timetable_id})`,
+    message: `Timetable updated: ${row.course_name} on ${row.day_of_week}, ${row.start_time} - ${row.end_time}${row.room_number ? `, Room ${row.room_number}` : ""}.`,
+    category: "Academic"
+  }));
+};
+
+const buildResultAndGpaItems = async (studentId) => {
+  try {
+    const schema = await getResultSchemaAsync();
+    if (!schema.idColumn || !schema.marksColumn || !schema.totalColumn) return [];
+
+    const rows = await queryAsync(
+      `
+        SELECT
+          r.${schema.idColumn} AS result_id,
+          r.${schema.marksColumn} AS marks_obtained,
+          r.${schema.totalColumn} AS total_marks,
+          c.course_name
+        FROM result r
+        JOIN course c ON c.course_id = r.course_id
+        WHERE r.student_id = ?
+        ORDER BY r.${schema.idColumn} DESC
+      `,
+      [studentId]
+    );
+
+    if (!rows.length) return [];
+
+    const toPercentage = (row) => {
+      const marks = Number(row.marks_obtained || 0);
+      const total = Number(row.total_marks || 0);
+      if (!total) return 0;
+      return (marks * 100) / total;
+    };
+
+    const latest = rows[0];
+    const latestPct = toPercentage(latest);
+    const currentAvg = rows.reduce((acc, row) => acc + toPercentage(row), 0) / rows.length;
+
+    const items = [
+      {
+        title: `AUTO: Result Update - ${latest.course_name} (#${latest.result_id})`,
+        message: `New/updated result in ${latest.course_name}: ${latestPct.toFixed(2)}%.`,
+        category: "Exam"
+      }
+    ];
+
+    if (rows.length > 1) {
+      const previousAvg = rows.slice(1).reduce((acc, row) => acc + toPercentage(row), 0) / (rows.length - 1);
+      const delta = currentAvg - previousAvg;
+      if (Math.abs(delta) >= 0.1) {
+        const direction = delta >= 0 ? "improved" : "dropped";
+        items.push({
+          title: "AUTO: GPA Change Alert",
+          message: `Overall performance has ${direction} by ${Math.abs(delta).toFixed(2)} points. Current average: ${currentAvg.toFixed(2)}%.`,
+          category: delta >= 0 ? "Academic" : "Urgent"
+        });
+      }
+    }
+
+    return items;
+  } catch (err) {
+    console.log("result notification sync warning:", err.message);
+    return [];
+  }
+};
+
+const syncStudentAutomatedNotifications = async (studentId, actorUserId = null) => {
+  try {
+    const studentRows = await queryAsync(
+      "SELECT student_id, user_id, name FROM student WHERE student_id = ? LIMIT 1",
+      [Number(studentId)]
+    );
+    if (!studentRows.length) return;
+
+    const studentName = String(studentRows[0].name || "Student");
+    const studentUserId = Number(studentRows[0].user_id || 0);
+    const normalizedStudentId = Number(studentRows[0].student_id || 0);
+    if (!studentUserId || !normalizedStudentId) return;
+
+    await syncAttendanceRiskNotificationsForStudent(normalizedStudentId, actorUserId);
+
+    const attendanceStats = await getStudentCourseAttendanceStats(normalizedStudentId);
+    const milestoneItems = buildAttendanceMilestoneItems(studentName, attendanceStats);
+    await syncNotificationGroupByPrefix({
+      userId: studentUserId,
+      prefix: "AUTO: Attendance Milestone -",
+      items: milestoneItems,
+      actorUserId
+    });
+
+    const examItems = await buildExamReminderItems(normalizedStudentId);
+    await syncNotificationGroupByPrefix({
+      userId: studentUserId,
+      prefix: "AUTO: Exam Reminder -",
+      items: examItems,
+      actorUserId
+    });
+
+    const assignmentItems = await buildAssignmentAlertItems(normalizedStudentId);
+    await syncNotificationGroupByPrefix({
+      userId: studentUserId,
+      prefix: "AUTO: Assignment ",
+      items: assignmentItems,
+      actorUserId
+    });
+
+    const feeItems = await buildFeeAlertItems(normalizedStudentId);
+    await syncNotificationGroupByPrefix({
+      userId: studentUserId,
+      prefix: "AUTO: Fee ",
+      items: feeItems,
+      actorUserId
+    });
+
+    const timetableItems = await buildTimetableUpdateItems(normalizedStudentId);
+    await syncNotificationGroupByPrefix({
+      userId: studentUserId,
+      prefix: "AUTO: Timetable Update -",
+      items: timetableItems,
+      actorUserId
+    });
+
+    const resultItems = await buildResultAndGpaItems(normalizedStudentId);
+    await syncNotificationGroupByPrefix({
+      userId: studentUserId,
+      prefix: "AUTO: Result Update -",
+      items: resultItems.filter((item) => item.title.startsWith("AUTO: Result Update -")),
+      actorUserId
+    });
+    await syncNotificationGroupByPrefix({
+      userId: studentUserId,
+      prefix: "AUTO: GPA Change Alert",
+      items: resultItems.filter((item) => item.title === "AUTO: GPA Change Alert"),
+      actorUserId
+    });
+  } catch (err) {
+    console.log("student notification sync warning:", err.message);
+  }
+};
+
+const syncAttendanceRiskNotificationsForStudent = async (studentId, actorUserId = null) => {
+  try {
+    const normalizedStudentId = Number(studentId);
+    if (!normalizedStudentId) return;
+
+    const studentRows = await queryAsync(
+      "SELECT student_id, user_id, name FROM student WHERE student_id = ? LIMIT 1",
+      [normalizedStudentId]
+    );
+
+    if (!studentRows.length) return;
+
+    const studentUserId = Number(studentRows[0].user_id || 0);
+    const studentName = String(studentRows[0].name || "Student").trim();
+    if (!studentUserId) return;
+
+    const courseStats = await getStudentCourseAttendanceStats(normalizedStudentId);
+
+    for (const row of courseStats) {
+      const courseId = Number(row.course_id);
+      const courseName = String(row.course_name || "Course").trim();
+      const presentCount = Number(row.present_count || 0);
+      const totalCount = Number(row.total_count || 0);
+      const percentage = totalCount ? (presentCount * 100) / totalCount : 0;
+      const title = buildAttendanceAlertTitle(courseName, courseId);
+
+      if (percentage < ATTENDANCE_WARNING_THRESHOLD) {
+        const classesNeeded = calculateClassesNeededForThreshold(presentCount, totalCount, ATTENDANCE_WARNING_THRESHOLD);
+        const message =
+          classesNeeded <= 1
+            ? `${studentName}, your attendance in ${courseName} is ${percentage.toFixed(2)}%. Attend the next class to recover above ${ATTENDANCE_WARNING_THRESHOLD}%.`
+            : `${studentName}, your attendance in ${courseName} is ${percentage.toFixed(2)}%. Attend the next ${classesNeeded} classes to recover above ${ATTENDANCE_WARNING_THRESHOLD}%.`;
+
+        const existing = await queryAsync(
+          `
+            SELECT notification_id, message, category, is_read
+            FROM notification
+            WHERE user_id = ? AND title = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+          `,
+          [studentUserId, title]
+        );
+
+        if (existing.length) {
+          const existingRow = existing[0];
+          const changed = String(existingRow.message || "") !== message || String(existingRow.category || "") !== "Urgent";
+          await queryAsync(
+            `
+              UPDATE notification
+              SET message = ?, category = 'Urgent', is_read = CASE WHEN ? THEN FALSE ELSE is_read END
+              WHERE notification_id = ?
+            `,
+            [message, changed ? 1 : 0, existingRow.notification_id]
+          );
+        } else {
+          await queryAsync(
+            `
+              INSERT INTO notification (user_id, title, message, category, created_by)
+              VALUES (?, ?, ?, 'Urgent', ?)
+            `,
+            [studentUserId, title, message, actorUserId || null]
+          );
+        }
+      } else {
+        await queryAsync(
+          `
+            UPDATE notification
+            SET is_read = TRUE
+            WHERE user_id = ? AND title = ? AND is_read = FALSE
+          `,
+          [studentUserId, title]
+        );
+      }
+    }
+  } catch (err) {
+    console.log("attendance notification sync warning:", err.message);
+  }
+};
+
 const normalizeList = (value) => {
   if (!Array.isArray(value)) return [];
   const normalized = value
@@ -199,6 +686,10 @@ db.connect((err) => {
   if (err) {
     console.log("❌ MySQL connection failed");
     console.log(err);
+    if (err.code === "ER_ACCESS_DENIED_ERROR") {
+      console.log("ℹ️  Check DB_USER and DB_PASSWORD in backend/.env (current host: " + DB_HOST + ")");
+    }
+    process.exit(1);
   } else {
     console.log("✅ Connected to MySQL database");
     ensureFeatureTables();
@@ -1606,19 +2097,11 @@ const server = app.listen(PORT, () => {
 
 server.on("error", (err) => {
   if (err && err.code === "EADDRINUSE") {
-<<<<<<< HEAD
     console.error(`❌ Port ${PORT} is already in use. Stop the existing backend instance before starting a new one.`);
     process.exit(1);
   }
 
   console.error("❌ Server startup error:", err);
-=======
-    console.error(`Port ${PORT} is already in use. Stop the other process or change PORT in backend/.env.`);
-    process.exit(1);
-  }
-
-  console.error("Server failed to start:", err);
->>>>>>> a5906f107313758b6ab3f4daa8bc79d130a7576f
   process.exit(1);
 });
 
@@ -1767,6 +2250,8 @@ app.post("/attendance", verifyToken, checkRole(["admin", "teacher"]), (req, res)
           console.log(err);
           return res.status(500).send("Error inserting attendance");
         }
+
+        syncAttendanceRiskNotificationsForStudent(Number(student_id), req.user.user_id);
         res.send("Attendance added successfully");
       });
     });
@@ -1884,6 +2369,8 @@ app.put("/attendance/:attendanceId", verifyToken, checkRole(["admin", "teacher"]
         if (!updateResult.affectedRows) {
           return res.status(404).json({ message: "Attendance record not found" });
         }
+
+        syncAttendanceRiskNotificationsForStudent(Number(student_id), req.user.user_id);
 
         return res.json({ message: "Attendance updated successfully" });
       });
@@ -3449,13 +3936,28 @@ app.get("/notifications", verifyToken, checkRole(["admin", "teacher", "student"]
     ORDER BY is_read ASC, created_at DESC
   `;
 
-  db.query(query, [req.user.user_id], (err, rows) => {
-    if (err) {
-      console.log(err);
-      return res.status(500).json({ message: "Error fetching notifications" });
-    }
-    res.json(rows);
-  });
+  const fetchNotificationsForUser = () => {
+    db.query(query, [req.user.user_id], (err, rows) => {
+      if (err) {
+        console.log(err);
+        return res.status(500).json({ message: "Error fetching notifications" });
+      }
+      return res.json(rows);
+    });
+  };
+
+  if (req.user.role === "student") {
+    return getStudentIdByUserId(req.user.user_id, async (studentErr, studentId) => {
+      if (studentErr) {
+        return fetchNotificationsForUser();
+      }
+
+      await syncStudentAutomatedNotifications(studentId, req.user.user_id);
+      return fetchNotificationsForUser();
+    });
+  }
+
+  return fetchNotificationsForUser();
 });
 
 app.post("/notifications", verifyToken, checkRole(["admin", "teacher"]), (req, res) => {

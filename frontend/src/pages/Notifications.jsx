@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import API from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import "./Notifications.css";
 
 const initialForm = {
   title: "",
@@ -60,18 +61,30 @@ function Notifications() {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
+  const categoryClass = (category) => {
+    const value = String(category || "General").toLowerCase();
+    if (value === "urgent") return "notif-tag urgent";
+    if (value === "fees") return "notif-tag fees";
+    if (value === "exam") return "notif-tag exam";
+    if (value === "academic") return "notif-tag academic";
+    return "notif-tag general";
+  };
+
   return (
-    <div>
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <h2 className="mb-0">Notifications</h2>
-        <span className="badge bg-danger fs-6">Unread: {unreadCount}</span>
+    <div className="notifications-page">
+      <div className="notifications-hero">
+        <div>
+          <h2 className="mb-1">Notifications</h2>
+          <p className="notifications-subtitle mb-0">Updates, reminders, and alerts in one place.</p>
+        </div>
+        <span className="notifications-unread-pill">Unread: {unreadCount}</span>
       </div>
 
-      {error && <div className="alert alert-danger">{error}</div>}
+      {error && <div className="alert alert-danger notifications-error">{error}</div>}
 
       {canSend && (
-        <div className="card shadow-sm border-0 mb-4">
-          <div className="card-header bg-info-subtle">Send Notification</div>
+        <div className="card shadow-sm border-0 mb-4 notifications-compose-card">
+          <div className="card-header notifications-compose-header">Send Notification</div>
           <div className="card-body">
             <form onSubmit={sendNotification}>
               <div className="row g-3">
@@ -127,7 +140,7 @@ function Notifications() {
                   />
                 </div>
               </div>
-              <button type="submit" className="btn btn-primary mt-3">
+              <button type="submit" className="btn btn-primary mt-3 notifications-send-btn">
                 Send
               </button>
             </form>
@@ -135,29 +148,29 @@ function Notifications() {
         </div>
       )}
 
-      <div className="card shadow-sm border-0">
-        <div className="card-header bg-light">
+      <div className="card shadow-sm border-0 notifications-inbox-card">
+        <div className="card-header notifications-inbox-header">
           <strong>Inbox</strong>
         </div>
-        <ul className="list-group list-group-flush">
+        <ul className="list-group list-group-flush notifications-list">
           {notifications.length === 0 && (
-            <li className="list-group-item text-center py-4">No notifications yet.</li>
+            <li className="list-group-item text-center py-4 notifications-empty">No notifications yet.</li>
           )}
 
           {notifications.map((item) => (
-            <li key={item.notification_id} className="list-group-item">
+            <li key={item.notification_id} className={`list-group-item notifications-item ${item.is_read ? "is-read" : "is-unread"}`}>
               <div className="d-flex justify-content-between align-items-start gap-3">
                 <div>
-                  <div className="d-flex align-items-center gap-2">
-                    <h6 className="mb-1">{item.title}</h6>
-                    <span className="badge bg-secondary">{item.category}</span>
-                    {!item.is_read && <span className="badge bg-danger">New</span>}
+                  <div className="d-flex align-items-center gap-2 mb-1 flex-wrap">
+                    <h6 className="mb-0 notifications-title">{item.title}</h6>
+                    <span className={categoryClass(item.category)}>{item.category}</span>
+                    {!item.is_read && <span className="notif-tag new">New</span>}
                   </div>
-                  <p className="mb-1 text-muted">{item.message}</p>
-                  <small className="text-muted">{new Date(item.created_at).toLocaleString()}</small>
+                  <p className="mb-1 notifications-message">{item.message}</p>
+                  <small className="notifications-time">{new Date(item.created_at).toLocaleString()}</small>
                 </div>
                 {!item.is_read && (
-                  <button className="btn btn-sm btn-outline-primary" onClick={() => markAsRead(item.notification_id)}>
+                  <button className="btn btn-sm btn-outline-primary notifications-read-btn" onClick={() => markAsRead(item.notification_id)}>
                     Mark Read
                   </button>
                 )}
