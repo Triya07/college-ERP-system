@@ -6,6 +6,10 @@ CREATE DATABASE IF NOT EXISTS college_erp;
 USE college_erp;
 
 -- ===== STEP 1: Drop existing tables if they exist (in correct order due to foreign keys) =====
+-- Temporarily disable FK checks so reruns also work when older leftover tables
+-- still reference current tables from a previous schema revision.
+SET FOREIGN_KEY_CHECKS = 0;
+
 DROP TABLE IF EXISTS student_course;
 DROP TABLE IF EXISTS class_attendance;
 DROP TABLE IF EXISTS class_student;
@@ -38,6 +42,8 @@ DROP TABLE IF EXISTS faculty;
 DROP TABLE IF EXISTS admin;
 DROP TABLE IF EXISTS student;
 DROP TABLE IF EXISTS user;
+
+SET FOREIGN_KEY_CHECKS = 1;
 
 -- ===== STEP 2: Create user table (for authentication) =====
 CREATE TABLE user (

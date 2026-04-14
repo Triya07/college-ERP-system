@@ -150,6 +150,20 @@ function Attendance() {
     return ((presentCount / total) * 100).toFixed(2);
   };
 
+  const calculateCoursePercentage = (studentId, courseId) => {
+    const courseData = attendanceRecords.filter(
+      (rec) =>
+        rec.student_id === parseInt(studentId) &&
+        rec.course_id === parseInt(courseId)
+    );
+
+    const total = courseData.length;
+    const presentCount = courseData.filter((rec) => rec.status === "Present").length;
+
+    if (total === 0) return "0.00";
+    return ((presentCount / total) * 100).toFixed(2);
+  };
+
   // Get unique students from attendance records
   const uniqueStudentIds = [
     ...new Set(attendanceRecords.map((rec) => rec.student_id))
@@ -373,7 +387,7 @@ function Attendance() {
                       {record.status}
                     </span>
                   </td>
-                  <td>{calculatePercentage(record.student_id)}%</td>
+                  <td>{calculateCoursePercentage(record.student_id, record.course_id)}%</td>
                   {!isStudent && (
                     <td>
                       <button

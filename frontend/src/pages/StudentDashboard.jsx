@@ -3,7 +3,9 @@ import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import API from "../services/api";
 import { MdBook, MdDateRange, MdAssignment, MdCheckCircle, MdHowToReg } from "react-icons/md";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import "./Dashboard.css";
+
 
 function StudentDashboard() {
   const { user, logout } = useAuth();
@@ -16,8 +18,9 @@ function StudentDashboard() {
     averageScore: 0
   });
   const [courses, setCourses] = useState([]);
-  const [todayClasses, setTodayClasses] = useState([]);
   const [attendanceTimeline, setAttendanceTimeline] = useState([]);
+  const [selectedAttendanceType, setSelectedAttendanceType] = useState("present");
+  const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -39,10 +42,9 @@ function StudentDashboard() {
         averageScore: data.averageScore || 0
       });
       setCourses((data.courses || []).slice(0, 4));
-      setTodayClasses(data.todayClasses || []);
 
-      const attendanceResponse = await API.get("/attendance/student/me");
-      setAttendanceTimeline(attendanceResponse.data || []);
+      const response_att = await API.get("/attendance/student/me");
+      setAttendanceTimeline(response_att.data || []);
       setError("");
     } catch (err) {
       console.log("Error fetching student data:", err);
@@ -56,60 +58,82 @@ function StudentDashboard() {
     navigate(path);
   };
 
-  const getMonthDays = () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
-    const firstDay = new Date(year, month, 1).getDay();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const leadingEmpty = (firstDay + 6) % 7;
+  const attendanceSummary = attendanceTimeline.reduce(
+    (acc, item) => {
+      if (item.status === "Present") {
+        acc.present += 1;
+      } else {
+        acc.absent += 1;
+      }
+      return acc;
+    },
+    { present: 0, absent: 0 }
+  );
 
-    const cells = [];
-    for (let i = 0; i < leadingEmpty; i += 1) {
-      cells.push({ type: "empty", key: `empty-${i}` });
-    }
+  const totalAttendanceRecords = attendanceSummary.present + attendanceSummary.absent;
+  const presentPercentage = totalAttendanceRecords
+    ? ((attendanceSummary.present / totalAttendanceRecords) * 100).toFixed(1)
+    : "0.0";
+  const absentPercentage = totalAttendanceRecords
+    ? ((attendanceSummary.absent / totalAttendanceRecords) * 100).toFixed(1)
+    : "0.0";
 
-    for (let day = 1; day <= daysInMonth; day += 1) {
-      const dateObj = new Date(year, month, day);
-      const dateKey = dateObj.toISOString().slice(0, 10);
-      const records = attendanceTimeline.filter(
-        (item) => String(item.attendance_date).slice(0, 10) === dateKey
-      );
+  const groupedAttendanceDetails = attendanceTimeline
+    .filter((item) => (selectedAttendanceType === "present" ? item.status === "Present" : item.status !== "Present"))
+    .reduce((acc, item) => {
+      const dateKey = String(item.attendance_date).slice(0, 10);
+      if (!acc[dateKey]) {
+        acc[dateKey] = [];
+      }
+      acc[dateKey].push(item);
+      return acc;
+    }, {});
 
-      let state = "none";
-      if (records.length > 0) {
-        const presentCount = records.filter((item) => item.status === "Present").length;
-        if (presentCount === records.length) {
-          state = "present";
-        } else if (presentCount === 0) {
-          state = "absent";
-        } else {
-          state = "mixed";
-        }
+  const attendanceDetailRows = Object.entries(groupedAttendanceDetails)
+    .sort(([a], [b]) => (a < b ? 1 : -1))
+    .map(([date, items]) => ({
+      date,
+      items
+    }));
+
+  const courseAttendanceRows = Object.values(
+    attendanceTimeline.reduce((acc, item) => {
+      const key = `${item.course_id || item.course_name || "course"}`;
+      if (!acc[key]) {
+        acc[key] = {
+          course_id: item.course_id || key,
+          course_name: item.course || item.course_name || "Course",
+          present: 0,
+          absent: 0,
+          total: 0
+        };
       }
 
-      const today = new Date();
-      const isToday =
-        day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
+      if (item.status === "Present") {
+        acc[key].present += 1;
+      } else {
+        acc[key].absent += 1;
+      }
 
-      cells.push({
-        type: "day",
-        day,
-        dateKey,
-        state,
-        isToday,
-        classesCount: records.length,
-        key: dateKey
-      });
-    }
+      acc[key].total += 1;
+      return acc;
+    }, {})
+  )
+    .map((row) => ({
+      ...row,
+      percentage: row.total ? ((row.present / row.total) * 100).toFixed(2) : "0.00"
+    }))
+    .sort((a, b) => a.course_name.localeCompare(b.course_name));
 
-    return {
-      monthLabel: now.toLocaleDateString(undefined, { month: "long", year: "numeric" }),
-      cells
-    };
+  const ATTENDANCE_COLORS = {
+    present: "#22c55e",
+    absent: "#ef4444"
   };
 
-  const calendarData = getMonthDays();
+  const openAttendanceModal = (type) => {
+    setSelectedAttendanceType(type);
+    setAttendanceModalOpen(true);
+  };
 
   if (loading) {
     return (
@@ -139,7 +163,7 @@ function StudentDashboard() {
       {error && <div className="alert alert-warning">{error}</div>}
 
       {/* Stats Cards */}
-      <div className="stats-grid">
+      <div className="stats-grid" style={{ display: "flex", justifyContent: "center", flexWrap: "wrap" }}>
         <div className="stat-card animate-slide-up" style={{ animationDelay: "0.1s" }}>
           <div className="stat-icon courses">
             <MdBook size={40} />
@@ -151,16 +175,6 @@ function StudentDashboard() {
         </div>
 
         <div className="stat-card animate-slide-up" style={{ animationDelay: "0.2s" }}>
-          <div className="stat-icon attendance">
-            <MdDateRange size={40} />
-          </div>
-          <div className="stat-content">
-            <h3>Attendance %</h3>
-            <p className="stat-number">{Number(stats.attendancePercentage).toFixed(2)}%</p>
-          </div>
-        </div>
-
-        <div className="stat-card animate-slide-up" style={{ animationDelay: "0.3s" }}>
           <div className="stat-icon results">
             <MdAssignment size={40} />
           </div>
@@ -170,7 +184,7 @@ function StudentDashboard() {
           </div>
         </div>
 
-        <div className="stat-card animate-slide-up" style={{ animationDelay: "0.4s" }}>
+        <div className="stat-card animate-slide-up" style={{ animationDelay: "0.3s" }}>
           <div className="stat-icon status">
             <MdCheckCircle size={40} />
           </div>
@@ -187,73 +201,95 @@ function StudentDashboard() {
         <div className="courses-list">
           {courses.length === 0 ? (
             <div className="alert alert-info">No enrolled courses found.</div>
-          ) : courses.map((course, index) => (
-            <div
-              key={course.course_id}
-              className="course-card animate-slide-up"
-              style={{ animationDelay: `${0.1 * (index + 1)}s` }}
-            >
-              <div className="course-header">
-                <h3>{course.course_name}</h3>
-                <span className="course-code">{course.course_code || "N/A"}</span>
-              </div>
-              <p className="course-info">
-                <strong>Department:</strong> {course.department}
-              </p>
-              <div className="course-actions">
-                <button className="btn btn-sm btn-primary" onClick={() => handleNavigate("/attendance")}>View Details</button>
-                <button className="btn btn-sm btn-outline-primary" onClick={() => handleNavigate("/results")}>View Results</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="quick-stats">
-        <h3>Today's Classes (Only Your Enrolled Courses)</h3>
-        {todayClasses.length === 0 ? (
-          <p className="mb-0 text-muted">No classes scheduled for you today.</p>
-        ) : (
-          <div className="today-classes-list">
-            {todayClasses.map((item) => (
-              <div key={item.timetable_id} className="today-class-card">
-                <h6 className="mb-1">{item.course_name}</h6>
-                <small className="d-block text-muted mb-1">
-                  {String(item.start_time || "").slice(0, 5)} - {String(item.end_time || "").slice(0, 5)}
-                </small>
-                <small className="d-block text-muted">
-                  {item.room_number ? `Room ${item.room_number}` : "Room TBD"} | {item.session_type}
-                </small>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="quick-stats">
-        <h3>Attendance Calendar - {calendarData.monthLabel}</h3>
-        <p className="text-muted mb-2">
-          Green = present, Red = absent, Yellow = mixed status in a day.
-        </p>
-        <div className="attendance-calendar-grid">
-          {calendarData.cells.map((cell) => {
-            if (cell.type === "empty") {
-              return <div key={cell.key} className="attendance-calendar-cell empty" />;
-            }
-
-            return (
+          ) : (
+            courses.map((course, index) => (
               <div
-                key={cell.key}
-                className={`attendance-calendar-cell ${cell.isToday ? "today" : ""}`}
-                title={`${cell.dateKey} | ${cell.classesCount} classes`}
+                key={course.course_id}
+                className="course-card animate-slide-up"
+                style={{ animationDelay: `${0.1 * (index + 1)}s` }}
               >
-                <span className="attendance-day-number">{cell.day}</span>
-                <span className={`attendance-dot ${cell.state}`} />
+                <div className="course-header">
+                  <h3>{course.course_name}</h3>
+                  <span className="course-code">{course.course_code || "N/A"}</span>
+                </div>
+                <p className="course-info">
+                  <strong>Department:</strong> {course.department}
+                </p>
+                <div className="course-actions">
+                  <button className="btn btn-sm btn-primary" onClick={() => handleNavigate("/attendance")}>View Details</button>
+                  <button className="btn btn-sm btn-outline-primary" onClick={() => handleNavigate("/results")}>View Results</button>
+                </div>
               </div>
-            );
-          })}
+            ))
+          )}
         </div>
       </div>
+
+      <div className="quick-stats">
+        <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+          <h3 className="mb-0">Course-wise Attendance</h3>
+          <button className="btn btn-sm btn-outline-primary" onClick={() => handleNavigate("/attendance")}>
+            Detailed Logs
+          </button>
+        </div>
+
+        <div className="attendance-grid">
+          {courseAttendanceRows.length === 0 ? (
+            <div className="alert alert-info w-100">No enrollment or attendance data found.</div>
+          ) : (
+            courseAttendanceRows.map((course) => {
+              const data = [
+                { name: "Present", value: course.present, color: ATTENDANCE_COLORS.present },
+                { name: "Absent", value: course.absent, color: ATTENDANCE_COLORS.absent }
+              ];
+
+              return (
+                <div key={course.course_id} className="attendance-course-card animate-slide-up">
+                  <h4>{course.course_name}</h4>
+                  <div className="course-pie-container">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={data}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={45}
+                          outerRadius={65}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
+                          {data.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="course-attendance-stats">
+                    <div>
+                      <span>Present</span>
+                      <strong style={{ color: ATTENDANCE_COLORS.present }}>{course.present}</strong>
+                    </div>
+                    <div>
+                      <span>Absent</span>
+                      <strong style={{ color: ATTENDANCE_COLORS.absent }}>{course.absent}</strong>
+                    </div>
+                    <div>
+                      <span>Rate</span>
+                      <strong style={{ color: Number(course.percentage) >= 75 ? "#22c55e" : "#ef4444" }}>
+                        {course.percentage}%
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+
 
       {/* Quick Links */}
       <div className="features-section">
@@ -275,16 +311,16 @@ function StudentDashboard() {
 
           <div className="feature-card animate-slide-up">
             <MdDateRange className="feature-icon" />
-            <h3>Class Schedule</h3>
-            <p>See today's classes and timetable</p>
-            <button className="btn btn-primary" onClick={() => handleNavigate("/timetable")}>View</button>
+            <h3>Class Registration</h3>
+            <p>Register for new courses</p>
+            <button className="btn btn-primary" onClick={() => handleNavigate("/course-registration")}>Open</button>
           </div>
 
           <div className="feature-card animate-slide-up">
             <MdHowToReg className="feature-icon" />
-            <h3>Course Registration</h3>
-            <p>Register and track your course requests</p>
-            <button className="btn btn-primary" onClick={() => handleNavigate("/course-registration")}>Open</button>
+            <h3>My Profile</h3>
+            <p>View and edit your profile</p>
+            <button className="btn btn-primary" onClick={() => handleNavigate("/profile")}>View</button>
           </div>
 
           <div className="feature-card animate-slide-up">
@@ -296,6 +332,15 @@ function StudentDashboard() {
         </div>
       </div>
 
+      {/* Admin-style Navigation Buttons */}
+      <div className="mb-4 d-flex justify-content-center align-items-center gap-2 flex-wrap">
+        <button className="btn btn-outline-primary" style={{ minWidth: "130px", fontSize: "0.95rem" }} onClick={() => handleNavigate("/timetable")}>Timetable</button>
+        <button className="btn btn-outline-primary" style={{ minWidth: "130px", fontSize: "0.95rem" }} onClick={() => handleNavigate("/fees")}>Fees</button>
+        <button className="btn btn-outline-primary" style={{ minWidth: "130px", fontSize: "0.95rem" }} onClick={() => handleNavigate("/notifications")}>Notifications</button>
+        <button className="btn btn-outline-primary" style={{ minWidth: "130px", fontSize: "0.95rem" }} onClick={() => handleNavigate("/announcements")}>Notice Board</button>
+        <button className="btn btn-outline-primary" style={{ minWidth: "160px", fontSize: "0.95rem" }} onClick={() => handleNavigate("/enterprise-workflows")}>Additional Features</button>
+      </div>
+
       {/* Performance Summary */}
       <div className="performance-card">
         <h3>Academic Performance</h3>
@@ -304,16 +349,69 @@ function StudentDashboard() {
             <span>Average Score</span>
             <strong>{Number(stats.averageScore).toFixed(2)}%</strong>
           </div>
+
           <div className="metric">
             <span>Total Credits</span>
             <strong>{stats.enrolledCourses * 4}/120</strong>
           </div>
+
           <div className="metric">
             <span>Performance</span>
             <strong>{stats.academicStatus}</strong>
           </div>
         </div>
       </div>
+
+      {attendanceModalOpen && (
+        <div className="attendance-modal-backdrop" onClick={() => setAttendanceModalOpen(false)}>
+          <div className="attendance-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="attendance-modal-header">
+              <div>
+                <h3 className="mb-1">{selectedAttendanceType === "present" ? "Present Dates" : "Absent Dates"}</h3>
+                <p className="mb-0 text-muted">
+                  {selectedAttendanceType === "present"
+                    ? `${attendanceSummary.present} present records • ${presentPercentage}%`
+                    : `${attendanceSummary.absent} absent records • ${absentPercentage}%`}
+                </p>
+              </div>
+              <button className="btn btn-sm btn-outline-primary" onClick={() => setAttendanceModalOpen(false)}>
+                Close
+              </button>
+            </div>
+
+            {attendanceDetailRows.length === 0 ? (
+              <div className="alert alert-light m-3 mb-0">
+                No {selectedAttendanceType} attendance records found.
+              </div>
+            ) : (
+              <div className="attendance-detail-list modal-list">
+                {attendanceDetailRows.map((group) => (
+                  <div key={group.date} className="attendance-detail-card">
+                    <div className="attendance-detail-date">
+                      {new Date(group.date).toLocaleDateString(undefined, {
+                        weekday: "short",
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric"
+                      })}
+                    </div>
+                    <div className="attendance-detail-items">
+                      {group.items.map((item, index) => (
+                        <div key={`${group.date}-${index}`} className="attendance-detail-item">
+                          <span className="attendance-detail-course">{item.course || item.course_name || "Course"}</span>
+                          <span className={`attendance-detail-badge ${selectedAttendanceType}`}>
+                            {item.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
