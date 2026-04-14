@@ -4880,21 +4880,25 @@ app.get("/guardians", verifyToken, checkRole(["admin", "teacher", "student"]), a
   }
 });
 
-app.post("/guardians", verifyToken, checkRole(["admin"]), async (req, res) => {
-  const { student_id, guardian_name, relation, phone, email, address, is_primary } = req.body;
-  if (!student_id || !guardian_name) {
-    return res.status(400).json({ message: "student_id and guardian_name are required" });
+app.post("/guardians", verifyToken, checkRole(["student"]), async (req, res) => {
+  const { guardian_name, relation, phone, email, address, is_primary } = req.body;
+  if (!guardian_name) {
+    return res.status(400).json({ message: "guardian_name is required" });
   }
   try {
+    const studentRows = await queryAsync("SELECT student_id FROM student WHERE user_id = ? LIMIT 1", [req.user.user_id]);
+    if (!studentRows.length) return res.status(404).json({ message: "Student profile not found" });
+    const studentId = studentRows[0].student_id;
+
     if (is_primary) {
-      await queryAsync("UPDATE guardian_profile SET is_primary = FALSE WHERE student_id = ?", [Number(student_id)]);
+      await queryAsync("UPDATE guardian_profile SET is_primary = FALSE WHERE student_id = ?", [studentId]);
     }
     const result = await queryAsync(
       `
         INSERT INTO guardian_profile (student_id, guardian_name, relation, phone, email, address, is_primary)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `,
-      [Number(student_id), guardian_name, relation || "Parent", phone || null, email || null, address || null, !!is_primary]
+      [studentId, guardian_name, relation || "Parent", phone || null, email || null, address || null, !!is_primary]
     );
     return res.status(201).json({ message: "Guardian added", guardian_id: result.insertId });
   } catch (err) {
@@ -4903,11 +4907,17 @@ app.post("/guardians", verifyToken, checkRole(["admin"]), async (req, res) => {
   }
 });
 
-app.put("/guardians/:id", verifyToken, checkRole(["admin"]), async (req, res) => {
+app.put("/guardians/:id", verifyToken, checkRole(["student"]), async (req, res) => {
   const { guardian_name, relation, phone, email, address, is_primary } = req.body;
   try {
+    const studentRows = await queryAsync("SELECT student_id FROM student WHERE user_id = ? LIMIT 1", [req.user.user_id]);
+    if (!studentRows.length) return res.status(404).json({ message: "Student profile not found" });
+
     const existing = await queryAsync("SELECT student_id FROM guardian_profile WHERE guardian_id = ?", [Number(req.params.id)]);
     if (!existing.length) return res.status(404).json({ message: "Guardian not found" });
+    if (Number(existing[0].student_id) !== Number(studentRows[0].student_id)) {
+      return res.status(403).json({ message: "Not authorized to update this guardian" });
+    }
 
     if (is_primary) {
       await queryAsync("UPDATE guardian_profile SET is_primary = FALSE WHERE student_id = ?", [existing[0].student_id]);
@@ -4929,9 +4939,15 @@ app.put("/guardians/:id", verifyToken, checkRole(["admin"]), async (req, res) =>
   }
 });
 
-app.delete("/guardians/:id", verifyToken, checkRole(["admin"]), async (req, res) => {
+app.delete("/guardians/:id", verifyToken, checkRole(["student"]), async (req, res) => {
   try {
-    const result = await queryAsync("DELETE FROM guardian_profile WHERE guardian_id = ?", [Number(req.params.id)]);
+    const studentRows = await queryAsync("SELECT student_id FROM student WHERE user_id = ? LIMIT 1", [req.user.user_id]);
+    if (!studentRows.length) return res.status(404).json({ message: "Student profile not found" });
+
+    const result = await queryAsync(
+      "DELETE FROM guardian_profile WHERE guardian_id = ? AND student_id = ?",
+      [Number(req.params.id), studentRows[0].student_id]
+    );
     if (!result.affectedRows) return res.status(404).json({ message: "Guardian not found" });
     return res.json({ message: "Guardian deleted" });
   } catch (err) {
@@ -5224,7 +5240,7 @@ app.get("/campus-services", verifyToken, checkRole(["admin", "teacher", "student
   }
 });
 
-app.post("/campus-services", verifyToken, checkRole(["admin", "teacher", "student"]), async (req, res) => {
+app.post("/campus-services", verifyToken, checkRole(["student"]), async (req, res) => {
   const { service_type, title, description } = req.body;
   if (!service_type || !title) {
     return res.status(400).json({ message: "service_type and title are required" });
@@ -5301,7 +5317,7 @@ app.get("/leave-requests", verifyToken, checkRole(["admin", "teacher", "student"
   }
 });
 
-app.post("/leave-requests", verifyToken, checkRole(["admin", "teacher", "student"]), async (req, res) => {
+app.post("/leave-requests", verifyToken, checkRole(["teacher", "student"]), async (req, res) => {
   const { leave_type, from_date, to_date, reason } = req.body;
   if (!leave_type || !from_date || !to_date) {
     return res.status(400).json({ message: "leave_type, from_date and to_date are required" });

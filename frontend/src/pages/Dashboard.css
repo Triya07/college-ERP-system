@@ -206,6 +206,30 @@ body[data-theme="dark"] .metric span {
   gap: 25px;
 }
 
+.admin-controls-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+}
+
+.admin-controls-grid .feature-card {
+  padding: 22px;
+}
+
+.admin-controls-grid .feature-icon {
+  font-size: 2.4rem;
+  margin-bottom: 10px;
+}
+
+.admin-controls-grid .feature-card h3 {
+  font-size: 1.15rem;
+  margin: 10px 0;
+}
+
+.admin-controls-grid .feature-card p {
+  margin: 8px 0 14px 0;
+  font-size: 0.9rem;
+}
+
 .feature-card {
   background: white;
   border-radius: 12px;
