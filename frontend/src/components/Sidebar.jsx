@@ -174,7 +174,7 @@ function Sidebar() {
             }
             to="/enterprise-workflows"
           >
-            <MdBusinessCenter className="me-2" style={{ display: "inline" }} /> Enterprise Workflows
+            <MdBusinessCenter className="me-2" style={{ display: "inline" }} /> Additional Features
           </NavLink>
         </li>
 

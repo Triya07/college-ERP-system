@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import API from "../services/api";
-import { MdBook, MdDateRange, MdAssignment, MdCheckCircle } from "react-icons/md";
+import { MdBook, MdDateRange, MdAssignment, MdCheckCircle, MdHowToReg } from "react-icons/md";
 import "./Dashboard.css";
 
 function StudentDashboard() {
@@ -281,10 +281,10 @@ function StudentDashboard() {
           </div>
 
           <div className="feature-card animate-slide-up">
-            <MdCheckCircle className="feature-icon" />
-            <h3>Notice Board</h3>
-            <p>Track your current academic standing</p>
-            <button className="btn btn-primary" onClick={() => handleNavigate("/dashboard")}>View</button>
+            <MdHowToReg className="feature-icon" />
+            <h3>Course Registration</h3>
+            <p>Register and track your course requests</p>
+            <button className="btn btn-primary" onClick={() => handleNavigate("/course-registration")}>Open</button>
           </div>
         </div>
       </div>

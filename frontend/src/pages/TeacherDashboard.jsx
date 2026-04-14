@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import API from "../services/api";
-import { MdClass, MdAssignment, MdDateRange, MdBarChart } from "react-icons/md";
+import { MdClass, MdAssignment, MdDateRange, MdBarChart, MdHowToReg } from "react-icons/md";
 import "./Dashboard.css";
 
 function TeacherDashboard() {
@@ -142,6 +142,13 @@ function TeacherDashboard() {
             <h3>View Reports</h3>
             <p>View attendance and performance reports</p>
             <button className="btn btn-primary" onClick={() => handleNavigate("/attendance")}>View Reports</button>
+          </div>
+
+          <div className="feature-card animate-slide-up">
+            <MdHowToReg className="feature-icon" />
+            <h3>Course Registration</h3>
+            <p>Review student registration requests</p>
+            <button className="btn btn-primary" onClick={() => handleNavigate("/course-registration")}>Open Registration</button>
           </div>
         </div>
       </div>

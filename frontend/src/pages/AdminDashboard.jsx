@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import API from "../services/api";
-import { MdDashboard, MdPeople, MdBook, MdSchool, MdInsertChart } from "react-icons/md";
+import { MdDashboard, MdPeople, MdBook, MdSchool, MdInsertChart, MdHowToReg } from "react-icons/md";
 import "./Dashboard.css";
 
 function AdminDashboard() {
@@ -127,19 +127,9 @@ function AdminDashboard() {
         </div>
       </div>
 
-      {/* Features Grid */}
-      <div className="mb-4 d-flex gap-2 flex-wrap">
-        <button className="btn btn-outline-primary" onClick={() => handleNavigate("/students")}>Users</button>
-        <button className="btn btn-outline-primary" onClick={() => handleNavigate("/courses")}>Courses</button>
-        <button className="btn btn-outline-primary" onClick={() => handleNavigate("/classes")}>Classes</button>
-        <button className="btn btn-outline-primary" onClick={() => handleNavigate("/attendance")}>Attendance</button>
-        <button className="btn btn-outline-primary" onClick={() => handleNavigate("/settings")}>Settings</button>
-        <button className="btn btn-outline-primary" onClick={() => handleNavigate("/notifications")}>Notifications</button>
-      </div>
-
       <div className="features-section">
         <h2 className="section-title">Admin Controls</h2>
-        <div className="features-grid">
+        <div className="features-grid admin-controls-grid">
           <div className="feature-card animate-slide-up">
             <MdPeople className="feature-icon" />
             <h3>Manage Students</h3>
@@ -178,48 +168,40 @@ function AdminDashboard() {
 
           <div className="feature-card animate-slide-up">
             <MdInsertChart className="feature-icon" />
-            <h3>View Reports</h3>
-            <p>Analytics and attendance reports</p>
+            <h3>View Attendance</h3>
+            <p>Track and manage attendance records</p>
             <button 
               className="btn btn-primary"
               onClick={() => handleNavigate("/attendance")}
             >
-              View Reports
+              View Attendance
+            </button>
+          </div>
+
+          <div className="feature-card animate-slide-up">
+            <MdHowToReg className="feature-icon" />
+            <h3>Course Registration</h3>
+            <p>Review and manage registration requests</p>
+            <button
+              className="btn btn-primary"
+              onClick={() => handleNavigate("/course-registration")}
+            >
+              Open Registration
             </button>
           </div>
         </div>
       </div>
 
-      {/* Quick Actions */}
-      <div className="quick-actions">
-        <h3>Quick Actions</h3>
-        <div className="action-buttons">
-          <button 
-            className="btn btn-outline-primary"
-            onClick={() => handleNavigate("/students")}
-          >
-            Add New Student
-          </button>
-          <button 
-            className="btn btn-outline-primary"
-            onClick={() => handleNavigate("/courses")}
-          >
-            Add New Course
-          </button>
-          <button 
-            className="btn btn-outline-primary"
-            onClick={() => handleNavigate("/faculty")}
-          >
-            Add Faculty Member
-          </button>
-          <button 
-            className="btn btn-outline-primary"
-            onClick={() => handleNavigate("/attendance")}
-          >
-            View Attendance
-          </button>
-        </div>
+      <div className="mb-4 d-flex justify-content-center align-items-center gap-2 flex-nowrap">
+        <button className="btn btn-outline-primary" style={{ minWidth: "120px", fontSize: "0.95rem" }} onClick={() => handleNavigate("/results")}>Results</button>
+        <button className="btn btn-outline-primary" style={{ minWidth: "120px", fontSize: "0.95rem" }} onClick={() => handleNavigate("/timetable")}>Timetable</button>
+        <button className="btn btn-outline-primary" style={{ minWidth: "120px", fontSize: "0.95rem" }} onClick={() => handleNavigate("/fees")}>Fees</button>
+        <button className="btn btn-outline-primary" style={{ minWidth: "120px", fontSize: "0.95rem" }} onClick={() => handleNavigate("/notifications")}>Notifications</button>
+        <button className="btn btn-outline-primary" style={{ minWidth: "120px", fontSize: "0.95rem" }} onClick={() => handleNavigate("/classes")}>Classes</button>
+        <button className="btn btn-outline-primary" style={{ minWidth: "140px", fontSize: "0.95rem" }} onClick={() => handleNavigate("/enterprise-workflows")}>Additional Features</button>
+        <button className="btn btn-outline-primary" style={{ minWidth: "120px", fontSize: "0.95rem" }} onClick={() => handleNavigate("/settings")}>Settings</button>
       </div>
+
     </div>
   );
 }
