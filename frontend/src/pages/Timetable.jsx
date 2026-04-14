@@ -12,12 +12,21 @@ const initialForm = {
   session_type: "Lecture"
 };
 
-const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
+const splitWeekdays = (value) =>
+  String(value || "")
+    .split(",")
+    .map((day) => day.trim())
+    .filter(Boolean);
+
+const formatTime = (value) => String(value || "").slice(0, 5);
 
 function Timetable() {
   const { user } = useAuth();
   const canManage = user?.role === "admin" || user?.role === "teacher";
   const canDelete = user?.role === "admin";
+  const isStudent = user?.role === "student";
 
   const [entries, setEntries] = useState([]);
   const [courses, setCourses] = useState([]);
@@ -28,7 +37,8 @@ function Timetable() {
 
   const fetchEntries = async () => {
     try {
-      const res = await API.get("/timetable");
+      const endpoint = isStudent ? "/classes" : "/timetable";
+      const res = await API.get(endpoint);
       setEntries(res.data || []);
       setError("");
     } catch (err) {
@@ -54,7 +64,7 @@ function Timetable() {
     if (canManage) {
       fetchMeta();
     }
-  }, []);
+  }, [canManage, isStudent]);
 
   const handleChange = (e) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -102,6 +112,50 @@ function Timetable() {
       setError(err.response?.data?.message || "Could not delete entry.");
     }
   };
+
+  const scheduleSlots = isStudent
+    ? entries.flatMap((item) =>
+        splitWeekdays(item.weekdays).map((day) => ({
+          id: `${item.class_id}-${day}-${item.start_time}-${item.end_time}`,
+          day_of_week: day,
+          start_time: item.start_time,
+          end_time: item.end_time,
+          course_name: item.course_name,
+          course_code: item.course_code,
+          faculty_name: item.professor_name,
+          room_number: item.room,
+          session_type: item.class_name || "Class"
+        }))
+      )
+    : entries.map((item) => ({
+        id: item.timetable_id,
+        day_of_week: item.day_of_week,
+        start_time: item.start_time,
+        end_time: item.end_time,
+        course_name: item.course_name,
+        course_code: item.course_code,
+        faculty_name: item.faculty_name,
+        room_number: item.room_number,
+        session_type: item.session_type,
+        raw: item
+      }));
+
+  const timeSlots = [...new Set(
+    scheduleSlots.map((item) => `${formatTime(item.start_time)}-${formatTime(item.end_time)}`)
+  )].sort((a, b) => a.localeCompare(b));
+
+  const scheduleMatrix = days.map((day) => ({
+    day,
+    cells: timeSlots.map((timeSlot) => {
+      const [start, end] = timeSlot.split("-");
+      return scheduleSlots.filter(
+        (item) =>
+          item.day_of_week === day &&
+          formatTime(item.start_time) === start &&
+          formatTime(item.end_time) === end
+      );
+    })
+  }));
 
   return (
     <div>
@@ -237,57 +291,82 @@ function Timetable() {
 
       <div className="card shadow-sm border-0">
         <div className="card-header bg-light">
-          <strong>Weekly Timetable</strong>
+          <strong>{isStudent ? "My Class Timetable" : "Weekly Timetable"}</strong>
         </div>
-        <div className="card-body p-0">
-          <div className="table-responsive">
-            <table className="table table-striped mb-0">
-              <thead>
-                <tr>
-                  <th>Day</th>
-                  <th>Time</th>
-                  <th>Course</th>
-                  <th>Faculty</th>
-                  <th>Room</th>
-                  <th>Type</th>
-                  {canManage && <th>Actions</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {entries.length === 0 && (
+        <div className="card-body">
+          {scheduleSlots.length === 0 ? (
+            <div className="text-center text-muted py-4">
+              No timetable entries available.
+            </div>
+          ) : (
+            <div className="table-responsive">
+              <table className="table table-bordered align-middle mb-0">
+                <thead>
                   <tr>
-                    <td colSpan={canManage ? 7 : 6} className="text-center py-4">
-                      No timetable entries available.
-                    </td>
+                    <th style={{ minWidth: "140px" }}>Day</th>
+                    {timeSlots.map((timeSlot) => (
+                      <th key={timeSlot} style={{ minWidth: "220px" }}>
+                        {timeSlot.replace("-", " - ")}
+                      </th>
+                    ))}
                   </tr>
-                )}
-                {entries.map((item) => (
-                  <tr key={item.timetable_id}>
-                    <td>{item.day_of_week}</td>
-                    <td>
-                      {String(item.start_time || "").slice(0, 5)} - {String(item.end_time || "").slice(0, 5)}
-                    </td>
-                    <td>{item.course_name}</td>
-                    <td>{item.faculty_name || "Unassigned"}</td>
-                    <td>{item.room_number || "-"}</td>
-                    <td>{item.session_type}</td>
-                    {canManage && (
-                      <td>
-                        <button className="btn btn-sm btn-outline-primary me-2" onClick={() => startEdit(item)}>
-                          Edit
-                        </button>
-                        {canDelete && (
-                          <button className="btn btn-sm btn-outline-danger" onClick={() => removeEntry(item.timetable_id)}>
-                            Delete
-                          </button>
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {scheduleMatrix.map((row) => (
+                    <tr key={row.day}>
+                      <td className="fw-semibold">{row.day}</td>
+                      {row.cells.map((cellItems, index) => (
+                        <td key={`${row.day}-${timeSlots[index]}`} className="p-2">
+                          {cellItems.length === 0 ? (
+                            <div className="text-muted small">-</div>
+                          ) : (
+                            <div className="d-flex flex-column gap-2">
+                              {cellItems.map((item) => (
+                                <div
+                                  key={item.id}
+                                  className="border rounded-3 p-2"
+                                  style={{ backgroundColor: "var(--surface-2-bg)" }}
+                                >
+                                  <div className="fw-semibold">{item.course_name}</div>
+                                  <div className="small text-muted">
+                                    {item.course_code || item.session_type || "Class"}
+                                  </div>
+                                  <div className="small">
+                                    Room: {item.room_number || "TBD"}
+                                  </div>
+                                  <div className="small">
+                                    Faculty: {item.faculty_name || "Unassigned"}
+                                  </div>
+                                  {!isStudent && canManage && item.raw && (
+                                    <div className="d-flex gap-2 mt-2">
+                                      <button
+                                        className="btn btn-sm btn-outline-primary"
+                                        onClick={() => startEdit(item.raw)}
+                                      >
+                                        Edit
+                                      </button>
+                                      {canDelete && (
+                                        <button
+                                          className="btn btn-sm btn-outline-danger"
+                                          onClick={() => removeEntry(item.raw.timetable_id)}
+                                        >
+                                          Delete
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </div>

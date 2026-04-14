@@ -2499,7 +2499,7 @@ app.get("/dashboard/student", verifyToken, checkRole(["student", "admin"]), (req
           return res.status(500).json({ message: "Error fetching student courses" });
         }
 
-        const todayClassesQuery = `
+        const weeklyClassesQuery = `
           SELECT
             t.timetable_id,
             t.day_of_week,
@@ -2515,14 +2515,13 @@ app.get("/dashboard/student", verifyToken, checkRole(["student", "admin"]), (req
           JOIN student_course sc ON sc.course_id = t.course_id
           JOIN course c ON c.course_id = t.course_id
           WHERE sc.student_id = ?
-            AND t.day_of_week = DAYNAME(CURDATE())
-          ORDER BY t.start_time
+          ORDER BY FIELD(t.day_of_week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'), t.start_time
         `;
 
-        db.query(todayClassesQuery, [studentId], (todayErr, todayClassRows) => {
-          if (todayErr) {
-            console.log(todayErr);
-            return res.status(500).json({ message: "Error fetching today's classes" });
+        db.query(weeklyClassesQuery, [studentId], (weeklyErr, weeklyClassRows) => {
+          if (weeklyErr) {
+            console.log(weeklyErr);
+            return res.status(500).json({ message: "Error fetching weekly classes" });
           }
 
           const stats = statsRows[0] || {};
@@ -2534,6 +2533,11 @@ app.get("/dashboard/student", verifyToken, checkRole(["student", "admin"]), (req
           } else if (attendancePercentage >= 50) {
             academicStatus = "Average";
           }
+          
+          const todayClasses = weeklyClassRows.filter(row => {
+            const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            return row.day_of_week === days[new Date().getDay()];
+          });
 
           res.json({
             studentId,
@@ -2543,7 +2547,8 @@ app.get("/dashboard/student", verifyToken, checkRole(["student", "admin"]), (req
             averageScore: Number(stats.averageScore || 0),
             academicStatus,
             courses: coursesRows || [],
-            todayClasses: todayClassRows || []
+            todayClasses: todayClasses || [],
+            weeklyClasses: weeklyClassRows || []
           });
         });
       });
