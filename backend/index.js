@@ -1562,8 +1562,18 @@ app.get("/", (req, res) => {
 });
 
 // Start server
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+});
+
+server.on("error", (err) => {
+  if (err && err.code === "EADDRINUSE") {
+    console.error(`Port ${PORT} is already in use. Stop the other process or change PORT in backend/.env.`);
+    process.exit(1);
+  }
+
+  console.error("Server failed to start:", err);
+  process.exit(1);
 });
 
 app.get("/attendance", verifyToken, checkRole(["admin", "teacher", "student"]), (req, res) => {
