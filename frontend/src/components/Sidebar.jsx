@@ -6,7 +6,6 @@ import {
   MdBook,
   MdDateRange,
   MdAssignment,
-  MdHome,
   MdSchool,
   MdSchedule,
   MdPayments,
@@ -28,17 +27,6 @@ function Sidebar() {
       <h4>College ERP</h4>
 
       <ul className="nav flex-column mt-4">
-        <li className="nav-item">
-          <NavLink
-            className={({ isActive }) =>
-              "nav-link text-white" + (isActive ? " active" : "")
-            }
-            to="/"
-          >
-            <MdHome className="me-2" style={{ display: "inline" }} /> Home
-          </NavLink>
-        </li>
-
         <li className="nav-item">
           <NavLink
             className={({ isActive }) =>
