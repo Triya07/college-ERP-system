@@ -150,6 +150,13 @@ function TeacherDashboard() {
             <p>Review student registration requests</p>
             <button className="btn btn-primary" onClick={() => handleNavigate("/course-registration")}>Open Registration</button>
           </div>
+
+          <div className="feature-card animate-slide-up">
+            <MdBarChart className="feature-icon" />
+            <h3>My Profile</h3>
+            <p>Update your personal and academic details</p>
+            <button className="btn btn-primary" onClick={() => handleNavigate("/profile")}>Open Profile</button>
+          </div>
         </div>
       </div>
 

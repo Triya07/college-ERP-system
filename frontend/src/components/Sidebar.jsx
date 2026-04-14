@@ -13,8 +13,8 @@ import {
   MdCampaign,
   MdHowToReg,
   MdClass,
-  MdSettings,
-  MdBusinessCenter
+  MdBusinessCenter,
+  MdPerson
 } from "react-icons/md";
 import { useAuth } from "../context/AuthContext";
 
@@ -178,18 +178,16 @@ function Sidebar() {
           </NavLink>
         </li>
 
-        {role === "admin" && (
-          <li className="nav-item">
-            <NavLink
-              className={({ isActive }) =>
-                "nav-link text-white" + (isActive ? " active" : "")
-              }
-              to="/settings"
-            >
-              <MdSettings className="me-2" style={{ display: "inline" }} /> Settings
-            </NavLink>
-          </li>
-        )}
+        <li className="nav-item">
+          <NavLink
+            className={({ isActive }) =>
+              "nav-link text-white" + (isActive ? " active" : "")
+            }
+            to="/profile"
+          >
+            <MdPerson className="me-2" style={{ display: "inline" }} /> Profile
+          </NavLink>
+        </li>
       </ul>
     </div>
   );

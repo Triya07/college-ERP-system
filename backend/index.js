@@ -1116,7 +1116,7 @@ app.put("/auth/profile", verifyToken, async (req, res) => {
     }
 
     if (req.user.role === "student") {
-      await queryAsync(
+      const updateResult = await queryAsync(
         `
           UPDATE student
           SET
@@ -1131,8 +1131,11 @@ app.put("/auth/profile", verifyToken, async (req, res) => {
         `,
         [name || null, department || null, semester || null, section || null, Number(year) || null, phone || null, academic_id || null, req.user.user_id]
       );
+      if (!updateResult.affectedRows) {
+        return res.status(404).json({ message: "Student profile not found" });
+      }
     } else if (req.user.role === "teacher") {
-      await queryAsync(
+      const updateResult = await queryAsync(
         `
           UPDATE faculty
           SET
@@ -1144,6 +1147,9 @@ app.put("/auth/profile", verifyToken, async (req, res) => {
         `,
         [name || null, department || null, phone || null, academic_id || null, req.user.user_id]
       );
+      if (!updateResult.affectedRows) {
+        return res.status(404).json({ message: "Faculty profile not found" });
+      }
     } else {
       isProtectedAdminByUserId(req.user.user_id, async (protectErr, isProtected) => {
         if (protectErr) {
@@ -1151,12 +1157,26 @@ app.put("/auth/profile", verifyToken, async (req, res) => {
           return res.status(500).json({ message: "Could not verify account restrictions" });
         }
 
-        if (isProtected) {
-          return res.status(403).json({ message: "Default admin profile is protected" });
-        }
-
         try {
-          await queryAsync(
+          // Protected admin can still update phone, while name/department stay locked.
+          if (isProtected) {
+            const phoneOnlyResult = await queryAsync(
+              "UPDATE admin SET phone = COALESCE(?, phone) WHERE user_id = ?",
+              [phone || null, req.user.user_id]
+            );
+
+            if (!phoneOnlyResult.affectedRows) {
+              const baseRows = await queryAsync("SELECT username, email FROM user WHERE user_id = ? LIMIT 1", [req.user.user_id]);
+              const fallbackName = name || baseRows[0]?.username || String(baseRows[0]?.email || "Admin").split("@")[0] || "Admin";
+              await queryAsync(
+                "INSERT INTO admin (user_id, name, department, phone) VALUES (?, ?, ?, ?)",
+                [req.user.user_id, fallbackName, department || null, phone || null]
+              );
+            }
+            return res.json({ message: "Phone updated successfully. Default admin name/department are protected." });
+          }
+
+          const adminUpdateResult = await queryAsync(
             `
               UPDATE admin
               SET
@@ -1167,6 +1187,16 @@ app.put("/auth/profile", verifyToken, async (req, res) => {
             `,
             [name || null, department || null, phone || null, req.user.user_id]
           );
+
+          if (!adminUpdateResult.affectedRows) {
+            const baseRows = await queryAsync("SELECT username, email FROM user WHERE user_id = ? LIMIT 1", [req.user.user_id]);
+            const fallbackName = name || baseRows[0]?.username || String(baseRows[0]?.email || "Admin").split("@")[0] || "Admin";
+            await queryAsync(
+              "INSERT INTO admin (user_id, name, department, phone) VALUES (?, ?, ?, ?)",
+              [req.user.user_id, fallbackName, department || null, phone || null]
+            );
+          }
+
           return res.json({ message: "Profile updated successfully" });
         } catch (adminErr) {
           console.log(adminErr);
@@ -1570,8 +1600,18 @@ app.get("/", (req, res) => {
 });
 
 // Start server
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+});
+
+server.on("error", (err) => {
+  if (err && err.code === "EADDRINUSE") {
+    console.error(`❌ Port ${PORT} is already in use. Stop the existing backend instance before starting a new one.`);
+    process.exit(1);
+  }
+
+  console.error("❌ Server startup error:", err);
+  process.exit(1);
 });
 
 app.get("/attendance", verifyToken, checkRole(["admin", "teacher", "student"]), (req, res) => {
@@ -4172,12 +4212,25 @@ app.post("/classes", verifyToken, checkRole(["admin", "teacher"]), async (req, r
   }
 
   try {
+    const normalizedCourseId = Number(course_id);
+    if (!normalizedCourseId || Number.isNaN(normalizedCourseId)) {
+      return res.status(400).json({ message: "Valid course is required" });
+    }
+
     let resolvedProfessorId = professor_id ? Number(professor_id) : null;
     if (req.user.role === "teacher") {
       const teacherRows = await queryAsync("SELECT faculty_id FROM faculty WHERE user_id = ?", [req.user.user_id]);
       resolvedProfessorId = teacherRows[0]?.faculty_id || null;
       if (!resolvedProfessorId) {
         return res.status(404).json({ message: "Faculty profile not found" });
+      }
+
+      const ownershipRows = await queryAsync(
+        "SELECT course_id FROM course WHERE course_id = ? AND faculty_id = ?",
+        [normalizedCourseId, resolvedProfessorId]
+      );
+      if (!ownershipRows.length) {
+        return res.status(403).json({ message: "You can only create classes for your own subjects" });
       }
     }
 
@@ -4189,7 +4242,7 @@ app.post("/classes", verifyToken, checkRole(["admin", "teacher"]), async (req, r
       `,
       [
         class_name,
-        Number(course_id),
+        normalizedCourseId,
         resolvedProfessorId,
         semester || null,
         section || null,
@@ -4205,8 +4258,23 @@ app.post("/classes", verifyToken, checkRole(["admin", "teacher"]), async (req, r
 
     const classId = insert.insertId;
     if (Array.isArray(student_ids) && student_ids.length) {
-      const values = student_ids.map((id) => [classId, Number(id)]);
-      await queryAsync("INSERT IGNORE INTO class_student (class_id, student_id) VALUES ?", [values]);
+      const selectedIds = student_ids.map((id) => Number(id)).filter(Boolean);
+      if (selectedIds.length) {
+        const enrolledRows = await queryAsync(
+          `
+            SELECT DISTINCT student_id
+            FROM student_course
+            WHERE course_id = ? AND student_id IN (${selectedIds.map(() => "?").join(",")})
+          `,
+          [normalizedCourseId, ...selectedIds]
+        );
+
+        const enrolledIds = enrolledRows.map((row) => Number(row.student_id));
+        if (enrolledIds.length) {
+          const values = enrolledIds.map((studentId) => [classId, studentId]);
+          await queryAsync("INSERT IGNORE INTO class_student (class_id, student_id) VALUES ?", [values]);
+        }
+      }
     }
 
     return res.status(201).json({ message: "Class created", class_id: classId });
@@ -4237,6 +4305,11 @@ app.put("/classes/:id", verifyToken, checkRole(["admin", "teacher"]), async (req
   }
 
   try {
+    const normalizedCourseId = Number(course_id);
+    if (!normalizedCourseId || Number.isNaN(normalizedCourseId)) {
+      return res.status(400).json({ message: "Valid course is required" });
+    }
+
     let resolvedProfessorId = professor_id ? Number(professor_id) : null;
     if (req.user.role === "teacher") {
       const teacherRows = await queryAsync("SELECT faculty_id FROM faculty WHERE user_id = ?", [req.user.user_id]);
@@ -4251,6 +4324,14 @@ app.put("/classes/:id", verifyToken, checkRole(["admin", "teacher"]), async (req
       );
       if (!ownershipRows.length) {
         return res.status(403).json({ message: "You can only update your own classes" });
+      }
+
+      const courseRows = await queryAsync(
+        "SELECT course_id FROM course WHERE course_id = ? AND faculty_id = ?",
+        [normalizedCourseId, resolvedProfessorId]
+      );
+      if (!courseRows.length) {
+        return res.status(403).json({ message: "You can only assign classes to your own subjects" });
       }
     }
 
@@ -4273,7 +4354,7 @@ app.put("/classes/:id", verifyToken, checkRole(["admin", "teacher"]), async (req
       `,
       [
         class_name,
-        Number(course_id),
+        normalizedCourseId,
         resolvedProfessorId,
         semester || null,
         section || null,
@@ -4348,6 +4429,12 @@ app.post("/classes/:id/students", verifyToken, checkRole(["admin", "teacher"]), 
       }
     }
 
+    const classRows = await queryAsync("SELECT class_id, course_id FROM class_group WHERE class_id = ?", [classId]);
+    if (!classRows.length) {
+      return res.status(404).json({ message: "Class not found" });
+    }
+    const classCourseId = Number(classRows[0].course_id);
+
     let selectedIds = Array.isArray(student_ids) ? student_ids.map((id) => Number(id)).filter(Boolean) : [];
 
     if (!selectedIds.length && (semester || section)) {
@@ -4368,6 +4455,20 @@ app.post("/classes/:id/students", verifyToken, checkRole(["admin", "teacher"]), 
 
     if (!selectedIds.length) {
       return res.status(400).json({ message: "Provide student IDs or valid semester/section filters" });
+    }
+
+    const enrolledRows = await queryAsync(
+      `
+        SELECT DISTINCT student_id
+        FROM student_course
+        WHERE course_id = ? AND student_id IN (${selectedIds.map(() => "?").join(",")})
+      `,
+      [classCourseId, ...selectedIds]
+    );
+    selectedIds = enrolledRows.map((row) => Number(row.student_id));
+
+    if (!selectedIds.length) {
+      return res.status(400).json({ message: "No eligible students found. Students must be enrolled in the class course." });
     }
 
     const values = selectedIds.map((studentId) => [classId, studentId]);

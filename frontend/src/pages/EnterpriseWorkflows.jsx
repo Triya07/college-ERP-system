@@ -23,6 +23,17 @@ const initialLeave = {
   reason: ""
 };
 
+const initialAcademicEvent = {
+  title: "",
+  event_type: "holiday",
+  start_date: "",
+  end_date: "",
+  department: "",
+  semester: "",
+  section: "",
+  notes: ""
+};
+
 const SERVICE_TYPES = [
   { key: "library", label: "Library" },
   { key: "hostel", label: "Hostel" },
@@ -49,6 +60,9 @@ function EnterpriseWorkflows() {
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [leaveForm, setLeaveForm] = useState(initialLeave);
 
+  const [academicEvents, setAcademicEvents] = useState([]);
+  const [eventForm, setEventForm] = useState(initialAcademicEvent);
+
   const handleError = (err, fallback) => {
     setError(err?.response?.data?.message || fallback);
   };
@@ -59,7 +73,8 @@ function EnterpriseWorkflows() {
       const requests = [
         API.get("/guardians"),
         API.get("/campus-services"),
-        API.get("/leave-requests")
+        API.get("/leave-requests"),
+        API.get("/academic-config")
       ];
 
       const responses = await Promise.all(requests);
@@ -67,6 +82,7 @@ function EnterpriseWorkflows() {
       setGuardians(responses[i++].data || []);
       setServiceRequests(responses[i++].data || []);
       setLeaveRequests(responses[i++].data || []);
+      setAcademicEvents(responses[i++].data?.events || []);
     } catch (err) {
       handleError(err, "Could not load additional features data.");
     }
@@ -135,6 +151,27 @@ function EnterpriseWorkflows() {
     }
   };
 
+  const createAcademicEvent = async (e) => {
+    e.preventDefault();
+    try {
+      await API.post("/academic-events", eventForm);
+      setEventForm(initialAcademicEvent);
+      loadAll();
+    } catch (err) {
+      handleError(err, "Could not add academic event.");
+    }
+  };
+
+  const deleteAcademicEvent = async (eventId) => {
+    if (!window.confirm("Delete this academic event?")) return;
+    try {
+      await API.delete(`/academic-events/${eventId}`);
+      loadAll();
+    } catch (err) {
+      handleError(err, "Could not delete academic event.");
+    }
+  };
+
   const getStatusLabel = (status) => {
     const value = String(status || "").toLowerCase();
     if (!value || value === "pending") return "Requested";
@@ -174,7 +211,8 @@ function EnterpriseWorkflows() {
           ["library", "Library"],
           ["hostel", "Hostel"],
           ["transport", "Transport"],
-          ["leave", "Leave Approval"]
+          ["leave", "Leave Approval"],
+          ["events", "Academic Events"]
         ].map(([id, label], idx) => (
           <li className="nav-item" key={id}>
             <button className={`nav-link ${idx === 0 ? "active" : ""}`} data-bs-toggle="pill" data-bs-target={`#tab-${id}`} type="button">{label}</button>
@@ -255,6 +293,51 @@ function EnterpriseWorkflows() {
             </form>
           )}
           <div className="table-responsive"><table className="table table-sm table-striped"><thead><tr><th>Type</th><th>From</th><th>To</th><th>Status</th><th>Requester</th>{isAdmin && <th>Review</th>}</tr></thead><tbody>{leaveRequests.map((r) => <tr key={r.leave_id}><td>{r.leave_type}</td><td>{new Date(r.from_date).toLocaleDateString()}</td><td>{new Date(r.to_date).toLocaleDateString()}</td><td>{getStatusLabel(r.status)}</td><td>{r.requester_email}</td>{isAdmin && <td>{renderReviewActions(r.status, () => reviewLeave(r.leave_id, "approved"), () => reviewLeave(r.leave_id, "rejected"))}</td>}</tr>)}</tbody></table></div>
+        </div>
+
+        <div className="tab-pane fade" id="tab-events">
+          {isAdmin && (
+            <form className="row g-2 mb-3" onSubmit={createAcademicEvent}>
+              <div className="col-md-3"><input className="form-control" placeholder="Title" value={eventForm.title} onChange={(e) => setEventForm((p) => ({ ...p, title: e.target.value }))} required /></div>
+              <div className="col-md-2"><select className="form-select" value={eventForm.event_type} onChange={(e) => setEventForm((p) => ({ ...p, event_type: e.target.value }))}><option value="holiday">Holiday</option><option value="exam">Exam</option><option value="no_class">No Class</option></select></div>
+              <div className="col-md-2"><input type="date" className="form-control" value={eventForm.start_date} onChange={(e) => setEventForm((p) => ({ ...p, start_date: e.target.value }))} required /></div>
+              <div className="col-md-2"><input type="date" className="form-control" value={eventForm.end_date} onChange={(e) => setEventForm((p) => ({ ...p, end_date: e.target.value }))} required /></div>
+              <div className="col-md-3"><input className="form-control" placeholder="Department (optional)" value={eventForm.department} onChange={(e) => setEventForm((p) => ({ ...p, department: e.target.value }))} /></div>
+              <div className="col-md-2"><input className="form-control" placeholder="Semester" value={eventForm.semester} onChange={(e) => setEventForm((p) => ({ ...p, semester: e.target.value }))} /></div>
+              <div className="col-md-2"><input className="form-control" placeholder="Section" value={eventForm.section} onChange={(e) => setEventForm((p) => ({ ...p, section: e.target.value }))} /></div>
+              <div className="col-md-6"><input className="form-control" placeholder="Notes" value={eventForm.notes} onChange={(e) => setEventForm((p) => ({ ...p, notes: e.target.value }))} /></div>
+              <div className="col-md-2"><button className="btn btn-primary w-100" type="submit">Add Event</button></div>
+            </form>
+          )}
+
+          <div className="table-responsive">
+            <table className="table table-sm table-striped">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Type</th>
+                  <th>Date Range</th>
+                  <th>Scope</th>
+                  {isAdmin && <th>Action</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {academicEvents.length === 0 ? (
+                  <tr><td colSpan={isAdmin ? 5 : 4} className="text-center">No academic events found.</td></tr>
+                ) : (
+                  academicEvents.map((event) => (
+                    <tr key={event.event_id}>
+                      <td>{event.title}</td>
+                      <td className="text-capitalize">{event.event_type}</td>
+                      <td>{String(event.start_date).slice(0, 10)} to {String(event.end_date).slice(0, 10)}</td>
+                      <td>{[event.department, event.semester, event.section].filter(Boolean).join(" / ") || "Global"}</td>
+                      {isAdmin && <td><button className="btn btn-sm btn-outline-danger" onClick={() => deleteAcademicEvent(event.event_id)}>Delete</button></td>}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
       </div>

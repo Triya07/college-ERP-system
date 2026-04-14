@@ -286,6 +286,13 @@ function StudentDashboard() {
             <p>Register and track your course requests</p>
             <button className="btn btn-primary" onClick={() => handleNavigate("/course-registration")}>Open</button>
           </div>
+
+          <div className="feature-card animate-slide-up">
+            <MdAssignment className="feature-icon" />
+            <h3>My Profile</h3>
+            <p>View and update your profile details</p>
+            <button className="btn btn-primary" onClick={() => handleNavigate("/profile")}>Open</button>
+          </div>
         </div>
       </div>
 

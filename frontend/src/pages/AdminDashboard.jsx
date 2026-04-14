@@ -199,7 +199,7 @@ function AdminDashboard() {
         <button className="btn btn-outline-primary" style={{ minWidth: "120px", fontSize: "0.95rem" }} onClick={() => handleNavigate("/notifications")}>Notifications</button>
         <button className="btn btn-outline-primary" style={{ minWidth: "120px", fontSize: "0.95rem" }} onClick={() => handleNavigate("/classes")}>Classes</button>
         <button className="btn btn-outline-primary" style={{ minWidth: "140px", fontSize: "0.95rem" }} onClick={() => handleNavigate("/enterprise-workflows")}>Additional Features</button>
-        <button className="btn btn-outline-primary" style={{ minWidth: "120px", fontSize: "0.95rem" }} onClick={() => handleNavigate("/settings")}>Settings</button>
+        <button className="btn btn-outline-primary" style={{ minWidth: "120px", fontSize: "0.95rem" }} onClick={() => handleNavigate("/profile")}>Profile</button>
       </div>
 
     </div>

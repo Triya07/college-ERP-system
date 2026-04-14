@@ -21,8 +21,8 @@ import Notifications from "./pages/Notifications";
 import AnnouncementBoard from "./pages/AnnouncementBoard";
 import CourseRegistration from "./pages/CourseRegistration";
 import Classes from "./pages/Classes";
-import AcademicSettings from "./pages/AcademicSettings";
 import EnterpriseWorkflows from "./pages/EnterpriseWorkflows";
+import Profile from "./pages/Profile";
 
 // Components
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -304,25 +304,6 @@ function AppRoutes() {
       />
 
       <Route
-        path="/settings/*"
-        element={
-          <ProtectedRoute
-            element={
-              <>
-                <Sidebar />
-                <main className="main-content bg-light">
-                  <Routes>
-                    <Route path="/" element={<AcademicSettings />} />
-                  </Routes>
-                </main>
-              </>
-            }
-            allowedRoles={["admin"]}
-          />
-        }
-      />
-
-      <Route
         path="/course-registration/*"
         element={
           <ProtectedRoute
@@ -332,6 +313,25 @@ function AppRoutes() {
                 <main className="main-content bg-light">
                   <Routes>
                     <Route path="/" element={<CourseRegistration />} />
+                  </Routes>
+                </main>
+              </>
+            }
+            allowedRoles={["admin", "teacher", "student"]}
+          />
+        }
+      />
+
+      <Route
+        path="/profile/*"
+        element={
+          <ProtectedRoute
+            element={
+              <>
+                <Sidebar />
+                <main className="main-content bg-light">
+                  <Routes>
+                    <Route path="/" element={<Profile />} />
                   </Routes>
                 </main>
               </>
