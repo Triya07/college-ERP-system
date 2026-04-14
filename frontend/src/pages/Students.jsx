@@ -6,12 +6,20 @@ const initialForm = {
   name: "",
   department: "",
   year: "",
+  semester: "",
   phone: "",
   email: "",
   password: ""
 };
 
 function Students() {
+  const yearSemesterOptions = {
+    1: ["1", "2"],
+    2: ["3", "4"],
+    3: ["5", "6"],
+    4: ["7", "8"]
+  };
+
   const [students, setStudents] = useState([]);
   const [formData, setFormData] = useState(initialForm);
   const [editingId, setEditingId] = useState(null);
@@ -42,6 +50,21 @@ function Students() {
   }, []);
 
   const handleChange = (e) => {
+    if (e.target.name === "year") {
+      const nextYear = Number(e.target.value);
+      const allowedSemesters = yearSemesterOptions[nextYear] || [];
+      const resolvedSemester = allowedSemesters.includes(String(formData.semester))
+        ? String(formData.semester)
+        : (allowedSemesters[0] || "");
+
+      setFormData({
+        ...formData,
+        year: String(nextYear),
+        semester: resolvedSemester
+      });
+      return;
+    }
+
     setFormData({
       ...formData,
       [e.target.name]: e.target.value
@@ -66,6 +89,7 @@ function Students() {
           name: formData.name,
           department: formData.department,
           year: formData.year,
+          semester: formData.semester,
           phone: formData.phone
         });
         setSuccess("Student updated successfully!");
@@ -96,6 +120,7 @@ function Students() {
       name: student.name || "",
       department: student.department || "",
       year: student.year || "",
+      semester: student.semester ? String(student.semester) : "",
       phone: student.phone || "",
       email: "",
       password: ""
@@ -120,9 +145,10 @@ function Students() {
     }
   };
 
-  const semesterLabel = (yearValue) => {
-    const year = Number(yearValue) || 1;
-    return `Sem ${Math.max((year - 1) * 2 + 1, 1)}-${Math.max(year * 2, 2)}`;
+  const yearSemesterLabel = (yearValue, semesterValue) => {
+    const year = Number(yearValue) || "-";
+    const semester = String(semesterValue || "-");
+    return `Year ${year} / Sem ${semester}`;
   };
 
   const departmentOptions = [
@@ -132,17 +158,17 @@ function Students() {
 
   const semesterOptions = [
     "all",
-    ...new Set((students || []).map((item) => String(item.year || "")).filter(Boolean))
+    ...new Set((students || []).map((item) => String(item.semester || "")).filter(Boolean))
   ];
 
   const filteredStudents = students.filter((student) => {
     const departmentMatch = departmentFilter === "all" || student.department === departmentFilter;
-    const semesterMatch = semesterFilter === "all" || String(student.year) === semesterFilter;
+    const semesterMatch = semesterFilter === "all" || String(student.semester) === semesterFilter;
     return departmentMatch && semesterMatch;
   });
 
   const groupedStudents = filteredStudents.reduce((acc, student) => {
-    const key = `${student.department || "General"} | ${semesterLabel(student.year)}`;
+    const key = `${student.department || "General"} | ${yearSemesterLabel(student.year, student.semester)}`;
     if (!acc[key]) {
       acc[key] = [];
     }
@@ -235,19 +261,37 @@ function Students() {
                   />
                 </div>
 
-                <div className="col-md-6">
+                <div className="col-md-3">
                   <label className="form-label">Year *</label>
-                  <input
-                    type="number"
+                  <select
                     name="year"
-                    placeholder="1-4"
                     className="form-control"
                     value={formData.year}
                     onChange={handleChange}
                     required
-                    min="1"
-                    max="4"
-                  />
+                  >
+                    <option value="">Select year</option>
+                    <option value="1">1st Year</option>
+                    <option value="2">2nd Year</option>
+                    <option value="3">3rd Year</option>
+                    <option value="4">4th Year</option>
+                  </select>
+                </div>
+
+                <div className="col-md-3">
+                  <label className="form-label">Semester *</label>
+                  <select
+                    name="semester"
+                    className="form-control"
+                    value={formData.semester}
+                    onChange={handleChange}
+                    required
+                  >
+                    <option value="">Select semester</option>
+                    {(yearSemesterOptions[Number(formData.year)] || []).map((sem) => (
+                      <option key={sem} value={sem}>Semester {sem}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="col-md-6">
@@ -348,7 +392,7 @@ function Students() {
               >
                 {semesterOptions.map((item) => (
                   <option key={item} value={item}>
-                    {item === "all" ? "All Semesters" : semesterLabel(item)}
+                    {item === "all" ? "All Semesters" : `Semester ${item}`}
                   </option>
                 ))}
               </select>
@@ -449,7 +493,7 @@ function Students() {
                     <th>ID</th>
                     <th>Name</th>
                     <th>Department</th>
-                    <th>Year</th>
+                    <th>Year / Semester</th>
                     <th>Phone</th>
                     <th>Roll Number</th>
                     <th>Actions</th>
@@ -469,7 +513,7 @@ function Students() {
                       <td className="fw-bold">{student.name}</td>
                       <td>{student.department}</td>
                       <td>
-                        <span className="badge bg-info">{semesterLabel(student.year)}</span>
+                        <span className="badge bg-info">{yearSemesterLabel(student.year, student.semester)}</span>
                       </td>
                       <td>{student.phone}</td>
                       <td>

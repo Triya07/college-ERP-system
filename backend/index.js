@@ -51,6 +51,54 @@ const queryAsync = (sql, params = []) =>
   });
 
 const ATTENDANCE_WARNING_THRESHOLD = 75;
+const YEAR_SEMESTER_RULES = {
+  1: ["1", "2"],
+  2: ["3", "4"],
+  3: ["5", "6"],
+  4: ["7", "8"]
+};
+
+const normalizeYearValue = (value) => {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 4) {
+    return null;
+  }
+  return parsed;
+};
+
+const normalizeSemesterValue = (value) => {
+  const normalized = String(value || "").trim();
+  if (!/^[1-8]$/.test(normalized)) {
+    return null;
+  }
+  return normalized;
+};
+
+const validateYearSemesterPair = (year, semester) => {
+  const normalizedYear = normalizeYearValue(year);
+  const normalizedSemester = normalizeSemesterValue(semester);
+
+  if (!normalizedYear || !normalizedSemester) {
+    return {
+      valid: false,
+      message: "Year must be 1-4 and semester must be 1-8"
+    };
+  }
+
+  const allowedSemesters = YEAR_SEMESTER_RULES[normalizedYear] || [];
+  if (!allowedSemesters.includes(normalizedSemester)) {
+    return {
+      valid: false,
+      message: `Invalid semester for Year ${normalizedYear}. Allowed semesters: ${allowedSemesters.join(" or ")}`
+    };
+  }
+
+  return {
+    valid: true,
+    year: normalizedYear,
+    semester: normalizedSemester
+  };
+};
 
 const calculateClassesNeededForThreshold = (presentCount, totalCount, threshold = ATTENDANCE_WARNING_THRESHOLD) => {
   const present = Number(presentCount) || 0;
@@ -172,83 +220,6 @@ const buildAttendanceMilestoneItems = (studentName, attendanceStats) => {
       message: `${studentName}, your attendance in ${courseName} is ${percentage.toFixed(2)}% (${bandText}).`,
       category
     });
-  }
-
-  return items;
-};
-
-const buildExamReminderItems = async (studentId) => {
-  const rows = await queryAsync(
-    `
-      SELECT
-        ew.exam_id,
-        ew.exam_title,
-        ew.exam_date,
-        c.course_name,
-        DATEDIFF(DATE(ew.exam_date), CURDATE()) AS days_left
-      FROM exam_workflow ew
-      JOIN course c ON c.course_id = ew.course_id
-      JOIN student_course sc ON sc.course_id = ew.course_id
-      WHERE sc.student_id = ?
-        AND ew.publish_status = 'published'
-        AND DATEDIFF(DATE(ew.exam_date), CURDATE()) IN (7, 3, 1)
-      ORDER BY ew.exam_date ASC
-    `,
-    [studentId]
-  );
-
-  return rows.map((row) => {
-    const daysLeft = Number(row.days_left);
-    return {
-      title: `AUTO: Exam Reminder - ${row.exam_title} (#${row.exam_id}) [${daysLeft}d]`,
-      message: `${row.exam_title} (${row.course_name}) is in ${daysLeft} day(s) on ${new Date(row.exam_date).toLocaleDateString()}.`,
-      category: daysLeft <= 1 ? "Urgent" : "Exam"
-    };
-  });
-};
-
-const buildAssignmentAlertItems = async (studentId) => {
-  const rows = await queryAsync(
-    `
-      SELECT
-        la.assignment_id,
-        la.title,
-        la.due_date,
-        c.course_name,
-        ls.submission_id,
-        DATEDIFF(DATE(la.due_date), CURDATE()) AS days_left
-      FROM lms_assignment la
-      JOIN course c ON c.course_id = la.course_id
-      JOIN student_course sc ON sc.course_id = la.course_id
-      LEFT JOIN lms_submission ls
-        ON ls.assignment_id = la.assignment_id AND ls.student_id = sc.student_id
-      WHERE sc.student_id = ?
-        AND la.status IN ('published', 'closed')
-        AND la.due_date IS NOT NULL
-    `,
-    [studentId]
-  );
-
-  const items = [];
-  for (const row of rows) {
-    if (row.submission_id) continue;
-    const daysLeft = Number(row.days_left);
-
-    if ([7, 3, 1].includes(daysLeft)) {
-      items.push({
-        title: `AUTO: Assignment Reminder - ${row.title} (#${row.assignment_id}) [${daysLeft}d]`,
-        message: `Assignment ${row.title} (${row.course_name}) is due in ${daysLeft} day(s).`,
-        category: daysLeft <= 1 ? "Urgent" : "Academic"
-      });
-    }
-
-    if (daysLeft < 0) {
-      items.push({
-        title: `AUTO: Assignment Overdue - ${row.title} (#${row.assignment_id})`,
-        message: `Assignment ${row.title} (${row.course_name}) is overdue. Submit as soon as possible.`,
-        category: "Urgent"
-      });
-    }
   }
 
   return items;
@@ -404,22 +375,6 @@ const syncStudentAutomatedNotifications = async (studentId, actorUserId = null) 
       userId: studentUserId,
       prefix: "AUTO: Attendance Milestone -",
       items: milestoneItems,
-      actorUserId
-    });
-
-    const examItems = await buildExamReminderItems(normalizedStudentId);
-    await syncNotificationGroupByPrefix({
-      userId: studentUserId,
-      prefix: "AUTO: Exam Reminder -",
-      items: examItems,
-      actorUserId
-    });
-
-    const assignmentItems = await buildAssignmentAlertItems(normalizedStudentId);
-    await syncNotificationGroupByPrefix({
-      userId: studentUserId,
-      prefix: "AUTO: Assignment ",
-      items: assignmentItems,
       actorUserId
     });
 
@@ -1007,74 +962,10 @@ const ensureFeatureTables = () => {
         FOREIGN KEY (student_id) REFERENCES student(student_id) ON DELETE CASCADE
       )
     `,
-    `
-      CREATE TABLE IF NOT EXISTS exam_workflow (
-        exam_id INT PRIMARY KEY AUTO_INCREMENT,
-        course_id INT NOT NULL,
-        exam_title VARCHAR(150) NOT NULL,
-        exam_date DATE NOT NULL,
-        start_time TIME,
-        end_time TIME,
-        venue VARCHAR(100),
-        publish_status ENUM('draft', 'published') DEFAULT 'draft',
-        hall_ticket_generated BOOLEAN DEFAULT FALSE,
-        created_by INT,
-        published_by INT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (course_id) REFERENCES course(course_id) ON DELETE CASCADE,
-        FOREIGN KEY (created_by) REFERENCES user(user_id) ON DELETE SET NULL,
-        FOREIGN KEY (published_by) REFERENCES user(user_id) ON DELETE SET NULL
-      )
-    `,
-    `
-      CREATE TABLE IF NOT EXISTS exam_hall_ticket (
-        hall_ticket_id INT PRIMARY KEY AUTO_INCREMENT,
-        exam_id INT NOT NULL,
-        student_id INT NOT NULL,
-        ticket_number VARCHAR(50) NOT NULL,
-        seat_number VARCHAR(50),
-        issued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY uniq_exam_student_ticket (exam_id, student_id),
-        UNIQUE KEY uniq_ticket_number (ticket_number),
-        FOREIGN KEY (exam_id) REFERENCES exam_workflow(exam_id) ON DELETE CASCADE,
-        FOREIGN KEY (student_id) REFERENCES student(student_id) ON DELETE CASCADE
-      )
-    `,
-    `
-      CREATE TABLE IF NOT EXISTS lms_assignment (
-        assignment_id INT PRIMARY KEY AUTO_INCREMENT,
-        course_id INT NOT NULL,
-        title VARCHAR(150) NOT NULL,
-        instructions TEXT,
-        due_date DATETIME,
-        max_marks DECIMAL(6,2) DEFAULT 100,
-        status ENUM('draft', 'published', 'closed') DEFAULT 'published',
-        created_by INT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (course_id) REFERENCES course(course_id) ON DELETE CASCADE,
-        FOREIGN KEY (created_by) REFERENCES user(user_id) ON DELETE SET NULL
-      )
-    `,
-    `
-      CREATE TABLE IF NOT EXISTS lms_submission (
-        submission_id INT PRIMARY KEY AUTO_INCREMENT,
-        assignment_id INT NOT NULL,
-        student_id INT NOT NULL,
-        submission_text TEXT,
-        attachment_url VARCHAR(255),
-        score DECIMAL(6,2),
-        feedback VARCHAR(255),
-        submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        reviewed_at TIMESTAMP NULL,
-        reviewed_by INT,
-        UNIQUE KEY uniq_assignment_submission (assignment_id, student_id),
-        FOREIGN KEY (assignment_id) REFERENCES lms_assignment(assignment_id) ON DELETE CASCADE,
-        FOREIGN KEY (student_id) REFERENCES student(student_id) ON DELETE CASCADE,
-        FOREIGN KEY (reviewed_by) REFERENCES user(user_id) ON DELETE SET NULL
-      )
-    `,
+
+
+
+
     `
       CREATE TABLE IF NOT EXISTS campus_service_request (
         request_id INT PRIMARY KEY AUTO_INCREMENT,
@@ -1108,84 +999,6 @@ const ensureFeatureTables = () => {
         FOREIGN KEY (reviewed_by) REFERENCES user(user_id) ON DELETE SET NULL
       )
     `,
-    `
-      CREATE TABLE IF NOT EXISTS payroll_record (
-        payroll_id INT PRIMARY KEY AUTO_INCREMENT,
-        employee_user_id INT NOT NULL,
-        payroll_month VARCHAR(20) NOT NULL,
-        basic_pay DECIMAL(10,2) NOT NULL,
-        allowances DECIMAL(10,2) DEFAULT 0,
-        deductions DECIMAL(10,2) DEFAULT 0,
-        net_pay DECIMAL(10,2) NOT NULL,
-        status ENUM('draft', 'processed', 'paid') DEFAULT 'draft',
-        processed_by INT,
-        processed_at TIMESTAMP NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY uniq_employee_month (employee_user_id, payroll_month),
-        FOREIGN KEY (employee_user_id) REFERENCES user(user_id) ON DELETE CASCADE,
-        FOREIGN KEY (processed_by) REFERENCES user(user_id) ON DELETE SET NULL
-      )
-    `,
-    `
-      CREATE TABLE IF NOT EXISTS finance_invoice (
-        invoice_id INT PRIMARY KEY AUTO_INCREMENT,
-        student_id INT NOT NULL,
-        invoice_number VARCHAR(50) NOT NULL,
-        category VARCHAR(80) DEFAULT 'Tuition',
-        grade_context VARCHAR(20),
-        amount DECIMAL(10,2) NOT NULL,
-        due_date DATE,
-        status ENUM('draft', 'published', 'partial', 'paid', 'void') DEFAULT 'draft',
-        notes VARCHAR(255),
-        published_by INT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY uniq_invoice_number (invoice_number),
-        FOREIGN KEY (student_id) REFERENCES student(student_id) ON DELETE CASCADE,
-        FOREIGN KEY (published_by) REFERENCES user(user_id) ON DELETE SET NULL
-      )
-    `,
-    `
-      CREATE TABLE IF NOT EXISTS finance_payment (
-        payment_id INT PRIMARY KEY AUTO_INCREMENT,
-        invoice_id INT NOT NULL,
-        amount DECIMAL(10,2) NOT NULL,
-        gateway_name VARCHAR(60),
-        gateway_reference VARCHAR(120),
-        status ENUM('initiated', 'success', 'failed') DEFAULT 'initiated',
-        paid_by INT,
-        paid_at TIMESTAMP NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (invoice_id) REFERENCES finance_invoice(invoice_id) ON DELETE CASCADE,
-        FOREIGN KEY (paid_by) REFERENCES user(user_id) ON DELETE SET NULL
-      )
-    `,
-    `
-      CREATE TABLE IF NOT EXISTS finance_receipt (
-        receipt_id INT PRIMARY KEY AUTO_INCREMENT,
-        payment_id INT NOT NULL,
-        receipt_number VARCHAR(50) NOT NULL,
-        issued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY uniq_receipt_number (receipt_number),
-        FOREIGN KEY (payment_id) REFERENCES finance_payment(payment_id) ON DELETE CASCADE
-      )
-    `,
-    `
-      CREATE TABLE IF NOT EXISTS document_request (
-        document_request_id INT PRIMARY KEY AUTO_INCREMENT,
-        student_id INT NOT NULL,
-        document_type VARCHAR(100) NOT NULL,
-        purpose VARCHAR(255),
-        status ENUM('pending', 'approved', 'rejected', 'issued') DEFAULT 'pending',
-        requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        reviewed_at TIMESTAMP NULL,
-        reviewed_by INT,
-        review_note VARCHAR(255),
-        issued_url VARCHAR(255),
-        FOREIGN KEY (student_id) REFERENCES student(student_id) ON DELETE CASCADE,
-        FOREIGN KEY (reviewed_by) REFERENCES user(user_id) ON DELETE SET NULL
-      )
-    `
   ];
 
   const runNext = (index = 0) => {
@@ -1196,7 +1009,7 @@ const ensureFeatureTables = () => {
 
     db.query(statements[index], (err) => {
       if (err && !isIgnorableSetupError(err)) {
-        console.log("⚠️ Table setup warning:", err.message);
+        console.log("Feature setup warning:", err.message);
       }
       runNext(index + 1);
     });
@@ -1206,11 +1019,8 @@ const ensureFeatureTables = () => {
 };
 
 // ===== AUTHENTICATION ROUTES =====
-
-// Sign Up - Create new user (student registration)
 app.post("/auth/signup", authRateLimiter, async (req, res) => {
   const { email, password, role, name, department, year, semester, section, phone, username, academic_id } = req.body;
-
   const normalizedRole = String(role || "").trim().toLowerCase();
 
   if (!email || !password || !normalizedRole || !name) {
@@ -1218,13 +1028,14 @@ app.post("/auth/signup", authRateLimiter, async (req, res) => {
   }
 
   if (!["student", "teacher"].includes(normalizedRole)) {
-    return res.status(400).json({ message: "Only student and professor registration is allowed" });
+    return res.status(400).json({ message: "Only student and teacher registration is allowed" });
   }
 
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
     const computedUsername = String(username || emailPrefix(email)).trim();
     const computedAcademicId = String(academic_id || computedUsername).trim();
+
     const outcome = await runInTransaction(async () => {
       const userResult = await queryAsync(
         "INSERT INTO user (email, password, role, username, academic_id) VALUES (?, ?, ?, ?, ?)",
@@ -1233,10 +1044,25 @@ app.post("/auth/signup", authRateLimiter, async (req, res) => {
 
       const userId = userResult.insertId;
       if (normalizedRole === "student") {
+        const validation = validateYearSemesterPair(year, semester);
+        if (!validation.valid) {
+          throw Object.assign(new Error(validation.message), { statusCode: 400 });
+        }
+
         const rollNumber = `STU${userId}${Date.now()}`.substring(0, 20);
         await queryAsync(
           "INSERT INTO student (user_id, name, department, year, semester, section, phone, roll_number, academic_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-          [userId, name, department || "General", Number(year) || 1, semester || String(year || 1), section || "A", phone || "", rollNumber, computedAcademicId]
+          [
+            userId,
+            name,
+            department || "General",
+            validation.year,
+            validation.semester,
+            section || "A",
+            phone || "",
+            rollNumber,
+            computedAcademicId
+          ]
         );
         return { message: "Student registered successfully", userId };
       }
@@ -1245,7 +1071,7 @@ app.post("/auth/signup", authRateLimiter, async (req, res) => {
         "INSERT INTO faculty (user_id, name, department, phone, academic_id) VALUES (?, ?, ?, ?, ?)",
         [userId, name, department || "General", phone || "", computedAcademicId]
       );
-      return { message: "Professor registered successfully", userId };
+      return { message: "Teacher registered successfully", userId };
     });
 
     await createAuditLog({
@@ -1260,14 +1086,16 @@ app.post("/auth/signup", authRateLimiter, async (req, res) => {
     return res.status(201).json({ message: outcome.message });
   } catch (err) {
     console.log(err);
+    if (err.statusCode === 400) {
+      return res.status(400).json({ message: err.message || "Invalid signup payload" });
+    }
     if (err.code === "ER_DUP_ENTRY") {
       return res.status(400).json({ message: "Email/username already exists" });
     }
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error" });
   }
 });
 
-// Login - Authenticate user
 app.post("/auth/login", authRateLimiter, async (req, res) => {
   const { email, password, role } = req.body;
 
@@ -1285,13 +1113,12 @@ app.post("/auth/login", authRateLimiter, async (req, res) => {
           return res.status(500).json({ message: "Server error" });
         }
 
-        if (results.length === 0) {
+        if (!results.length) {
           return res.status(401).json({ message: "Invalid credentials" });
         }
 
         const user = results[0];
         const passwordValid = await bcrypt.compare(password, user.password);
-
         if (!passwordValid) {
           return res.status(401).json({ message: "Invalid credentials" });
         }
@@ -1310,59 +1137,44 @@ app.post("/auth/login", authRateLimiter, async (req, res) => {
           { expiresIn: "24h" }
         );
 
-        // Fetch additional profile info based on role
-        let profileData = {};
+        const respondWithProfile = (query, params) => {
+          db.query(query, params, (profileErr, profileRows) => {
+            if (profileErr) {
+              console.log(profileErr);
+              return res.status(500).json({ message: "Server error" });
+            }
+
+            return res.json({
+              token,
+              user: { ...user, password: undefined },
+              profile: profileRows?.[0] || {}
+            });
+          });
+        };
+
         if (user.role === "student") {
-          db.query(
+          return respondWithProfile(
             "SELECT student_id, name, department, year, semester, section, academic_id FROM student WHERE user_id = ?",
-            [user.user_id],
-            (err, studentData) => {
-              if (studentData && studentData.length > 0) {
-                profileData = { ...studentData[0] };
-              }
-              res.json({
-                token,
-                user: { ...user, password: undefined },
-                profile: profileData
-              });
-            }
-          );
-        } else if (user.role === "teacher") {
-          db.query(
-            "SELECT faculty_id, name, department, academic_id FROM faculty WHERE user_id = ?",
-            [user.user_id],
-            (err, facultyData) => {
-              if (facultyData && facultyData.length > 0) {
-                profileData = { ...facultyData[0] };
-              }
-              res.json({
-                token,
-                user: { ...user, password: undefined },
-                profile: profileData
-              });
-            }
-          );
-        } else {
-          db.query(
-            "SELECT admin_id, name, department FROM admin WHERE user_id = ?",
-            [user.user_id],
-            (err, adminData) => {
-              if (adminData && adminData.length > 0) {
-                profileData = { ...adminData[0] };
-              }
-              res.json({
-                token,
-                user: { ...user, password: undefined },
-                profile: profileData
-              });
-            }
+            [user.user_id]
           );
         }
+
+        if (user.role === "teacher") {
+          return respondWithProfile(
+            "SELECT faculty_id, name, department, academic_id FROM faculty WHERE user_id = ?",
+            [user.user_id]
+          );
+        }
+
+        return respondWithProfile(
+          "SELECT admin_id, name, department FROM admin WHERE user_id = ?",
+          [user.user_id]
+        );
       }
     );
   } catch (err) {
     console.log(err);
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error" });
   }
 });
 
@@ -1372,32 +1184,25 @@ app.post("/auth/forgot-password", authRateLimiter, async (req, res) => {
     return res.status(400).json({ message: "Email is required" });
   }
 
-  const genericMessage = "If the account exists, a password reset token has been issued.";
+  const genericMessage = "If your email exists in our system, a reset link/token has been sent";
 
   try {
     const normalizedEmail = String(email).trim().toLowerCase();
-    const rows = await queryAsync(
-      "SELECT user_id, email, role, is_active FROM user WHERE LOWER(email) = ? LIMIT 1",
+    const users = await queryAsync(
+      "SELECT user_id, email, role FROM user WHERE LOWER(email) = ? LIMIT 1",
       [normalizedEmail]
     );
 
-    if (!rows.length) {
+    if (!users.length) {
       return res.json({ message: genericMessage });
     }
 
-    const user = rows[0];
-    if (!user.is_active) {
-      return res.json({ message: genericMessage });
-    }
-
+    const user = users[0];
     if (user.role === "admin" && PROTECTED_ADMIN_EMAILS.has(normalizedEmail)) {
-      return res.json({ message: genericMessage });
+      return res.status(403).json({ message: "Default admin password cannot be reset from this endpoint" });
     }
 
-    await queryAsync(
-      "DELETE FROM password_reset_token WHERE user_id = ? OR expires_at < NOW() OR used_at IS NOT NULL",
-      [user.user_id]
-    );
+    await queryAsync("DELETE FROM password_reset_token WHERE user_id = ? AND used_at IS NULL", [user.user_id]);
 
     const resetToken = crypto.randomBytes(24).toString("hex");
     const tokenHash = crypto.createHash("sha256").update(resetToken).digest("hex");
@@ -1607,6 +1412,24 @@ app.put("/auth/profile", verifyToken, async (req, res) => {
     }
 
     if (req.user.role === "student") {
+      const currentRows = await queryAsync(
+        "SELECT year, semester FROM student WHERE user_id = ? LIMIT 1",
+        [req.user.user_id]
+      );
+      if (!currentRows.length) {
+        return res.status(404).json({ message: "Student profile not found" });
+      }
+
+      const yearProvided = year !== undefined && year !== null && String(year).trim() !== "";
+      const semesterProvided = semester !== undefined && semester !== null && String(semester).trim() !== "";
+
+      const resolvedYear = yearProvided ? year : currentRows[0].year;
+      const resolvedSemester = semesterProvided ? semester : currentRows[0].semester;
+      const validation = validateYearSemesterPair(resolvedYear, resolvedSemester);
+      if (!validation.valid) {
+        return res.status(400).json({ message: validation.message });
+      }
+
       const updateResult = await queryAsync(
         `
           UPDATE student
@@ -1620,7 +1443,16 @@ app.put("/auth/profile", verifyToken, async (req, res) => {
             academic_id = COALESCE(?, academic_id)
           WHERE user_id = ?
         `,
-        [name || null, department || null, semester || null, section || null, Number(year) || null, phone || null, academic_id || null, req.user.user_id]
+        [
+          name || null,
+          department || null,
+          semesterProvided ? validation.semester : null,
+          section || null,
+          yearProvided ? validation.year : null,
+          phone || null,
+          academic_id || null,
+          req.user.user_id
+        ]
       );
       if (!updateResult.affectedRows) {
         return res.status(404).json({ message: "Student profile not found" });
@@ -2503,8 +2335,13 @@ app.get("/students", verifyToken, checkRole(["admin", "teacher", "student"]), (r
 app.post("/students", verifyToken, checkRole(["admin"]), async (req, res) => {
   const { name, department, year, semester, section, phone, email, password, academic_id, username } = req.body;
 
-  if (!name || !department || !year || !phone) {
+  if (!name || !department || !year || !semester || !phone) {
     return res.status(400).json({ message: "All student fields are required" });
+  }
+
+  const validation = validateYearSemesterPair(year, semester);
+  if (!validation.valid) {
+    return res.status(400).json({ message: validation.message });
   }
 
   if (!email || !password) {
@@ -2528,7 +2365,7 @@ app.post("/students", verifyToken, checkRole(["admin"]), async (req, res) => {
       const rollNumber = `STU${userId}${Date.now()}`.substring(0, 20);
       const studentResult = await queryAsync(
         "INSERT INTO student (user_id, name, department, year, semester, section, roll_number, phone, academic_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [userId, name, department, year, semester || String(year), section || "A", rollNumber, phone, computedAcademicId]
+        [userId, name, department, validation.year, validation.semester, section || "A", rollNumber, phone, computedAcademicId]
       );
 
       return { userId, studentId: studentResult.insertId };
@@ -2560,8 +2397,13 @@ app.put("/students/:id", verifyToken, checkRole(["admin"]), (req, res) => {
   const { id } = req.params;
   const { name, department, year, semester, section, phone, academic_id } = req.body;
 
-  if (!name || !department || !year || !phone) {
+  if (!name || !department || !year || !semester || !phone) {
     return res.status(400).json({ message: "All student fields are required" });
+  }
+
+  const validation = validateYearSemesterPair(year, semester);
+  if (!validation.valid) {
+    return res.status(400).json({ message: validation.message });
   }
 
   const query = `
@@ -2570,7 +2412,7 @@ app.put("/students/:id", verifyToken, checkRole(["admin"]), (req, res) => {
     WHERE student_id = ?
   `;
 
-  db.query(query, [name, department, year, semester || null, section || null, phone, academic_id || null, id], (err, result) => {
+  db.query(query, [name, department, validation.year, validation.semester, section || null, phone, academic_id || null, id], (err, result) => {
     if (err) {
       console.log("update student error", err);
       return res.status(500).json({ message: "Error updating student" });
@@ -4350,9 +4192,16 @@ app.get("/course-registration", verifyToken, checkRole(["admin", "teacher", "stu
       s.name AS student_name,
       s.department,
       s.year,
+      s.semester AS student_semester,
       cr.course_id,
       c.course_name,
       c.course_code,
+      c.semester AS course_semester,
+      CASE
+        WHEN CAST(COALESCE(c.semester, '0') AS UNSIGNED) < CAST(COALESCE(s.semester, '0') AS UNSIGNED)
+          THEN 'Backlog'
+        ELSE 'Regular'
+      END AS registration_type,
       cr.status,
       cr.student_note,
       cr.reviewer_note,
@@ -4401,34 +4250,67 @@ app.get("/course-registration/available", verifyToken, checkRole(["student"]), (
       return res.status(404).json({ message: "Student profile not found" });
     }
 
-    const query = `
-      SELECT
-        c.course_id,
-        c.course_name,
-        c.course_code,
-        c.department,
-        c.credits,
-        CASE WHEN sc.enrollment_id IS NULL THEN FALSE ELSE TRUE END AS is_enrolled,
-        pending.request_id AS pending_request_id,
-        pending.status AS pending_status
-      FROM course c
-      LEFT JOIN student_course sc
-        ON sc.course_id = c.course_id AND sc.student_id = ?
-      LEFT JOIN (
-        SELECT request_id, course_id, status
-        FROM course_registration_request
-        WHERE student_id = ? AND status = 'Pending'
-      ) pending
-        ON pending.course_id = c.course_id
-      ORDER BY c.course_name
-    `;
-
-    db.query(query, [studentId, studentId], (err, rows) => {
-      if (err) {
-        console.log(err);
-        return res.status(500).json({ message: "Error fetching available courses" });
+    const studentContextQuery = "SELECT semester FROM student WHERE student_id = ? LIMIT 1";
+    db.query(studentContextQuery, [studentId], (studentCtxErr, studentCtxRows) => {
+      if (studentCtxErr) {
+        console.log(studentCtxErr);
+        return res.status(500).json({ message: "Error resolving student semester" });
       }
-      res.json(rows);
+
+      if (!studentCtxRows.length) {
+        return res.status(404).json({ message: "Student profile not found" });
+      }
+
+      const studentSemester = Number(studentCtxRows[0].semester || 0);
+
+      const query = `
+        SELECT
+          c.course_id,
+          c.course_name,
+          c.course_code,
+          c.department,
+          c.credits,
+          c.semester AS course_semester,
+          CASE WHEN sc.enrollment_id IS NULL THEN FALSE ELSE TRUE END AS is_enrolled,
+          pending.request_id AS pending_request_id,
+          pending.status AS pending_status,
+          CASE
+            WHEN c.semester IS NULL OR c.semester = '' THEN 'Regular'
+            WHEN CAST(c.semester AS UNSIGNED) < ? THEN 'Backlog'
+            ELSE 'Regular'
+          END AS registration_type,
+          CASE
+            WHEN c.semester IS NULL OR c.semester = '' THEN TRUE
+            WHEN CAST(c.semester AS UNSIGNED) <= ? THEN TRUE
+            ELSE FALSE
+          END AS can_request
+        FROM course c
+        LEFT JOIN student_course sc
+          ON sc.course_id = c.course_id AND sc.student_id = ?
+        LEFT JOIN (
+          SELECT request_id, course_id, status
+          FROM course_registration_request
+          WHERE student_id = ? AND status = 'Pending'
+        ) pending
+          ON pending.course_id = c.course_id
+        ORDER BY c.course_name
+      `;
+
+      db.query(query, [studentSemester, studentSemester, studentId, studentId], (err, rows) => {
+        if (err) {
+          console.log(err);
+          return res.status(500).json({ message: "Error fetching available courses" });
+        }
+
+        const hydrated = (rows || []).map((row) => ({
+          ...row,
+          registration_locked_reason: row.can_request
+            ? null
+            : `Course belongs to future semester ${row.course_semester}`
+        }));
+
+        return res.json(hydrated);
+      });
     });
   });
 });
@@ -4444,44 +4326,70 @@ app.post("/course-registration", verifyToken, checkRole(["student"]), (req, res)
       return res.status(404).json({ message: "Student profile not found" });
     }
 
-    const enrolledQuery = "SELECT enrollment_id FROM student_course WHERE student_id = ? AND course_id = ?";
-    db.query(enrolledQuery, [studentId, Number(course_id)], (enrolledErr, enrolledRows) => {
-      if (enrolledErr) {
-        console.log(enrolledErr);
-        return res.status(500).json({ message: "Error validating enrollment" });
+    const eligibilityQuery = `
+      SELECT s.semester AS student_semester, c.semester AS course_semester
+      FROM student s
+      JOIN course c ON c.course_id = ?
+      WHERE s.student_id = ?
+      LIMIT 1
+    `;
+
+    db.query(eligibilityQuery, [Number(course_id), studentId], (eligibilityErr, eligibilityRows) => {
+      if (eligibilityErr) {
+        console.log(eligibilityErr);
+        return res.status(500).json({ message: "Error validating course eligibility" });
       }
 
-      if (enrolledRows.length) {
-        return res.status(400).json({ message: "You are already enrolled in this course" });
+      if (!eligibilityRows.length) {
+        return res.status(404).json({ message: "Course or student profile not found" });
       }
 
-      const pendingQuery = `
-        SELECT request_id FROM course_registration_request
-        WHERE student_id = ? AND course_id = ? AND status = 'Pending'
-      `;
+      const studentSemester = Number(eligibilityRows[0].student_semester || 0);
+      const courseSemester = Number(eligibilityRows[0].course_semester || 0);
 
-      db.query(pendingQuery, [studentId, Number(course_id)], (pendingErr, pendingRows) => {
-        if (pendingErr) {
-          console.log(pendingErr);
-          return res.status(500).json({ message: "Error validating pending requests" });
+      if (courseSemester && studentSemester && courseSemester > studentSemester) {
+        return res.status(400).json({ message: "You can only request current or previous semester (backlog) courses" });
+      }
+
+      const enrolledQuery = "SELECT enrollment_id FROM student_course WHERE student_id = ? AND course_id = ?";
+      db.query(enrolledQuery, [studentId, Number(course_id)], (enrolledErr, enrolledRows) => {
+        if (enrolledErr) {
+          console.log(enrolledErr);
+          return res.status(500).json({ message: "Error validating enrollment" });
         }
 
-        if (pendingRows.length) {
-          return res.status(400).json({ message: "A pending request already exists for this course" });
+        if (enrolledRows.length) {
+          return res.status(400).json({ message: "You are already enrolled in this course" });
         }
 
-        db.query(
-          "INSERT INTO course_registration_request (student_id, course_id, student_note) VALUES (?, ?, ?)",
-          [studentId, Number(course_id), student_note || ""],
-          (insertErr, result) => {
-            if (insertErr) {
-              console.log(insertErr);
-              return res.status(500).json({ message: "Error submitting registration request" });
-            }
+        const pendingQuery = `
+          SELECT request_id FROM course_registration_request
+          WHERE student_id = ? AND course_id = ? AND status = 'Pending'
+        `;
 
-            res.status(201).json({ message: "Registration request submitted", request_id: result.insertId });
+        db.query(pendingQuery, [studentId, Number(course_id)], (pendingErr, pendingRows) => {
+          if (pendingErr) {
+            console.log(pendingErr);
+            return res.status(500).json({ message: "Error validating pending requests" });
           }
-        );
+
+          if (pendingRows.length) {
+            return res.status(400).json({ message: "A pending request already exists for this course" });
+          }
+
+          db.query(
+            "INSERT INTO course_registration_request (student_id, course_id, student_note) VALUES (?, ?, ?)",
+            [studentId, Number(course_id), student_note || ""],
+            (insertErr, result) => {
+              if (insertErr) {
+                console.log(insertErr);
+                return res.status(500).json({ message: "Error submitting registration request" });
+              }
+
+              return res.status(201).json({ message: "Registration request submitted", request_id: result.insertId });
+            }
+          );
+        });
       });
     });
   });
@@ -5617,258 +5525,6 @@ app.delete("/guardians/:id", verifyToken, checkRole(["student"]), async (req, re
   }
 });
 
-// ===== EXAM TIMETABLE + HALL TICKET + PUBLISH WORKFLOW =====
-app.get("/exams/workflow", verifyToken, checkRole(["admin", "teacher", "student"]), async (req, res) => {
-  try {
-    let rows = [];
-    if (req.user.role === "student") {
-      const studentRows = await queryAsync("SELECT student_id FROM student WHERE user_id = ? LIMIT 1", [req.user.user_id]);
-      if (!studentRows.length) return res.json([]);
-
-      rows = await queryAsync(
-        `
-          SELECT ew.*, c.course_name, c.course_code
-          FROM exam_workflow ew
-          JOIN course c ON c.course_id = ew.course_id
-          JOIN student_course sc ON sc.course_id = ew.course_id
-          WHERE sc.student_id = ? AND ew.publish_status = 'published'
-          ORDER BY ew.exam_date ASC, ew.start_time ASC
-        `,
-        [studentRows[0].student_id]
-      );
-    } else {
-      rows = await queryAsync(
-        `
-          SELECT ew.*, c.course_name, c.course_code
-          FROM exam_workflow ew
-          JOIN course c ON c.course_id = ew.course_id
-          ORDER BY ew.exam_date ASC, ew.start_time ASC
-        `
-      );
-    }
-    return res.json(rows);
-  } catch (err) {
-    console.log(err);
-    return res.status(500).json({ message: "Error fetching exam workflow" });
-  }
-});
-
-app.post("/exams/workflow", verifyToken, checkRole(["admin", "teacher"]), async (req, res) => {
-  const { course_id, exam_title, exam_date, start_time, end_time, venue } = req.body;
-  if (!course_id || !exam_title || !exam_date) {
-    return res.status(400).json({ message: "course_id, exam_title and exam_date are required" });
-  }
-  try {
-    const result = await queryAsync(
-      `
-        INSERT INTO exam_workflow (course_id, exam_title, exam_date, start_time, end_time, venue, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `,
-      [Number(course_id), exam_title, exam_date, start_time || null, end_time || null, venue || null, req.user.user_id]
-    );
-    return res.status(201).json({ message: "Exam schedule created", exam_id: result.insertId });
-  } catch (err) {
-    console.log(err);
-    return res.status(500).json({ message: "Error creating exam schedule" });
-  }
-});
-
-app.put("/exams/workflow/:id/publish", verifyToken, checkRole(["admin", "teacher"]), async (req, res) => {
-  try {
-    const result = await queryAsync(
-      "UPDATE exam_workflow SET publish_status = 'published', published_by = ? WHERE exam_id = ?",
-      [req.user.user_id, Number(req.params.id)]
-    );
-    if (!result.affectedRows) return res.status(404).json({ message: "Exam not found" });
-    return res.json({ message: "Exam schedule published" });
-  } catch (err) {
-    console.log(err);
-    return res.status(500).json({ message: "Error publishing exam schedule" });
-  }
-});
-
-app.post("/exams/workflow/:id/hall-ticket/generate", verifyToken, checkRole(["admin", "teacher"]), async (req, res) => {
-  try {
-    const examRows = await queryAsync("SELECT exam_id, course_id FROM exam_workflow WHERE exam_id = ? LIMIT 1", [Number(req.params.id)]);
-    if (!examRows.length) return res.status(404).json({ message: "Exam not found" });
-
-    const exam = examRows[0];
-    const students = await queryAsync("SELECT student_id FROM student_course WHERE course_id = ?", [exam.course_id]);
-
-    for (const st of students) {
-      const ticketNumber = `HT-${exam.exam_id}-${st.student_id}`;
-      const seatNumber = `S-${exam.exam_id}-${st.student_id}`;
-      await queryAsync(
-        `
-          INSERT INTO exam_hall_ticket (exam_id, student_id, ticket_number, seat_number)
-          VALUES (?, ?, ?, ?)
-          ON DUPLICATE KEY UPDATE ticket_number = VALUES(ticket_number), seat_number = VALUES(seat_number)
-        `,
-        [exam.exam_id, st.student_id, ticketNumber, seatNumber]
-      );
-    }
-
-    await queryAsync("UPDATE exam_workflow SET hall_ticket_generated = TRUE WHERE exam_id = ?", [exam.exam_id]);
-    return res.json({ message: "Hall tickets generated", generated_count: students.length });
-  } catch (err) {
-    console.log(err);
-    return res.status(500).json({ message: "Error generating hall tickets" });
-  }
-});
-
-app.get("/exams/hall-ticket/me", verifyToken, checkRole(["student"]), async (req, res) => {
-  try {
-    const studentRows = await queryAsync("SELECT student_id FROM student WHERE user_id = ? LIMIT 1", [req.user.user_id]);
-    if (!studentRows.length) return res.json([]);
-
-    const rows = await queryAsync(
-      `
-        SELECT eht.*, ew.exam_title, ew.exam_date, ew.start_time, ew.end_time, ew.venue, c.course_name, c.course_code
-        FROM exam_hall_ticket eht
-        JOIN exam_workflow ew ON ew.exam_id = eht.exam_id
-        JOIN course c ON c.course_id = ew.course_id
-        WHERE eht.student_id = ? AND ew.publish_status = 'published'
-        ORDER BY ew.exam_date ASC
-      `,
-      [studentRows[0].student_id]
-    );
-
-    return res.json(rows);
-  } catch (err) {
-    console.log(err);
-    return res.status(500).json({ message: "Error fetching hall tickets" });
-  }
-});
-
-// ===== ASSIGNMENT / LMS =====
-app.get("/assignments", verifyToken, checkRole(["admin", "teacher", "student"]), async (req, res) => {
-  try {
-    let rows = [];
-    if (req.user.role === "student") {
-      const studentRows = await queryAsync("SELECT student_id FROM student WHERE user_id = ? LIMIT 1", [req.user.user_id]);
-      if (!studentRows.length) return res.json([]);
-      rows = await queryAsync(
-        `
-          SELECT la.*, c.course_name, c.course_code
-          FROM lms_assignment la
-          JOIN course c ON c.course_id = la.course_id
-          JOIN student_course sc ON sc.course_id = la.course_id
-          WHERE sc.student_id = ? AND la.status IN ('published', 'closed')
-          ORDER BY la.created_at DESC
-        `,
-        [studentRows[0].student_id]
-      );
-    } else {
-      rows = await queryAsync(
-        `
-          SELECT la.*, c.course_name, c.course_code
-          FROM lms_assignment la
-          JOIN course c ON c.course_id = la.course_id
-          ORDER BY la.created_at DESC
-        `
-      );
-    }
-    return res.json(rows);
-  } catch (err) {
-    console.log(err);
-    return res.status(500).json({ message: "Error fetching assignments" });
-  }
-});
-
-app.post("/assignments", verifyToken, checkRole(["admin", "teacher"]), async (req, res) => {
-  const { course_id, title, instructions, due_date, max_marks, status } = req.body;
-  if (!course_id || !title) {
-    return res.status(400).json({ message: "course_id and title are required" });
-  }
-  try {
-    const result = await queryAsync(
-      `
-        INSERT INTO lms_assignment (course_id, title, instructions, due_date, max_marks, status, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `,
-      [Number(course_id), title, instructions || "", due_date || null, Number(max_marks) || 100, status || "published", req.user.user_id]
-    );
-    return res.status(201).json({ message: "Assignment created", assignment_id: result.insertId });
-  } catch (err) {
-    console.log(err);
-    return res.status(500).json({ message: "Error creating assignment" });
-  }
-});
-
-app.post("/assignments/:id/submit", verifyToken, checkRole(["student"]), async (req, res) => {
-  const { submission_text, attachment_url } = req.body;
-  try {
-    const studentRows = await queryAsync("SELECT student_id FROM student WHERE user_id = ? LIMIT 1", [req.user.user_id]);
-    if (!studentRows.length) return res.status(404).json({ message: "Student profile not found" });
-
-    const result = await queryAsync(
-      `
-        INSERT INTO lms_submission (assignment_id, student_id, submission_text, attachment_url)
-        VALUES (?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE submission_text = VALUES(submission_text), attachment_url = VALUES(attachment_url), submitted_at = CURRENT_TIMESTAMP
-      `,
-      [Number(req.params.id), studentRows[0].student_id, submission_text || "", attachment_url || null]
-    );
-
-    return res.json({ message: "Submission saved", submission_id: result.insertId || null });
-  } catch (err) {
-    console.log(err);
-    return res.status(500).json({ message: "Error submitting assignment" });
-  }
-});
-
-app.get("/assignments/:id/submissions", verifyToken, checkRole(["admin", "teacher", "student"]), async (req, res) => {
-  try {
-    if (req.user.role === "student") {
-      const studentRows = await queryAsync("SELECT student_id FROM student WHERE user_id = ? LIMIT 1", [req.user.user_id]);
-      if (!studentRows.length) return res.json([]);
-      const own = await queryAsync(
-        `
-          SELECT submission_id, assignment_id, student_id, submission_text, attachment_url, score, feedback, submitted_at, reviewed_at
-          FROM lms_submission
-          WHERE assignment_id = ? AND student_id = ?
-        `,
-        [Number(req.params.id), studentRows[0].student_id]
-      );
-      return res.json(own);
-    }
-
-    const rows = await queryAsync(
-      `
-        SELECT ls.*, s.name AS student_name, s.academic_id
-        FROM lms_submission ls
-        JOIN student s ON s.student_id = ls.student_id
-        WHERE ls.assignment_id = ?
-        ORDER BY ls.submitted_at DESC
-      `,
-      [Number(req.params.id)]
-    );
-    return res.json(rows);
-  } catch (err) {
-    console.log(err);
-    return res.status(500).json({ message: "Error fetching submissions" });
-  }
-});
-
-app.put("/assignments/submissions/:id/review", verifyToken, checkRole(["admin", "teacher"]), async (req, res) => {
-  const { score, feedback } = req.body;
-  try {
-    const result = await queryAsync(
-      `
-        UPDATE lms_submission
-        SET score = ?, feedback = ?, reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP
-        WHERE submission_id = ?
-      `,
-      [score === undefined ? null : Number(score), feedback || null, req.user.user_id, Number(req.params.id)]
-    );
-    if (!result.affectedRows) return res.status(404).json({ message: "Submission not found" });
-    return res.json({ message: "Submission reviewed" });
-  } catch (err) {
-    console.log(err);
-    return res.status(500).json({ message: "Error reviewing submission" });
-  }
-});
-
 // ===== LIBRARY / HOSTEL / TRANSPORT =====
 app.get("/campus-services", verifyToken, checkRole(["admin", "teacher", "student"]), async (req, res) => {
   try {
@@ -6020,320 +5676,3 @@ app.put("/leave-requests/:id/review", verifyToken, checkRole(["admin"]), async (
   }
 });
 
-// ===== PAYROLL / HR =====
-app.get("/payroll", verifyToken, checkRole(["admin", "teacher"]), async (req, res) => {
-  try {
-    let rows = [];
-    if (req.user.role === "admin") {
-      rows = await queryAsync(
-        `
-          SELECT pr.*, u.email AS employee_email
-          FROM payroll_record pr
-          JOIN user u ON u.user_id = pr.employee_user_id
-          ORDER BY pr.created_at DESC
-        `
-      );
-    } else {
-      rows = await queryAsync(
-        `
-          SELECT pr.*, u.email AS employee_email
-          FROM payroll_record pr
-          JOIN user u ON u.user_id = pr.employee_user_id
-          WHERE pr.employee_user_id = ?
-          ORDER BY pr.created_at DESC
-        `,
-        [req.user.user_id]
-      );
-    }
-    return res.json(rows);
-  } catch (err) {
-    console.log(err);
-    return res.status(500).json({ message: "Error fetching payroll records" });
-  }
-});
-
-app.post("/payroll", verifyToken, checkRole(["admin"]), async (req, res) => {
-  const { employee_user_id, payroll_month, basic_pay, allowances, deductions } = req.body;
-  if (!employee_user_id || !payroll_month || basic_pay === undefined) {
-    return res.status(400).json({ message: "employee_user_id, payroll_month and basic_pay are required" });
-  }
-
-  const netPay = Number(basic_pay || 0) + Number(allowances || 0) - Number(deductions || 0);
-  try {
-    const result = await queryAsync(
-      `
-        INSERT INTO payroll_record (employee_user_id, payroll_month, basic_pay, allowances, deductions, net_pay, processed_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-          basic_pay = VALUES(basic_pay),
-          allowances = VALUES(allowances),
-          deductions = VALUES(deductions),
-          net_pay = VALUES(net_pay),
-          processed_by = VALUES(processed_by)
-      `,
-      [Number(employee_user_id), payroll_month, Number(basic_pay), Number(allowances || 0), Number(deductions || 0), netPay, req.user.user_id]
-    );
-    return res.status(201).json({ message: "Payroll record upserted", payroll_id: result.insertId || null });
-  } catch (err) {
-    console.log(err);
-    return res.status(500).json({ message: "Error saving payroll" });
-  }
-});
-
-app.put("/payroll/:id/status", verifyToken, checkRole(["admin"]), async (req, res) => {
-  const { status } = req.body;
-  if (!["draft", "processed", "paid"].includes(String(status || "").toLowerCase())) {
-    return res.status(400).json({ message: "Invalid status" });
-  }
-  try {
-    const result = await queryAsync(
-      "UPDATE payroll_record SET status = ?, processed_by = ?, processed_at = CURRENT_TIMESTAMP WHERE payroll_id = ?",
-      [String(status).toLowerCase(), req.user.user_id, Number(req.params.id)]
-    );
-    if (!result.affectedRows) return res.status(404).json({ message: "Payroll record not found" });
-    return res.json({ message: "Payroll status updated" });
-  } catch (err) {
-    console.log(err);
-    return res.status(500).json({ message: "Error updating payroll status" });
-  }
-});
-
-// ===== FINANCE WORKFLOW (INVOICE / PAYMENT GATEWAY / RECEIPT) =====
-app.get("/finance/invoices", verifyToken, checkRole(["admin", "student"]), async (req, res) => {
-  try {
-    if (req.user.role === "admin") {
-      const rows = await queryAsync(
-        `
-          SELECT fi.*, s.name AS student_name
-          FROM finance_invoice fi
-          JOIN student s ON s.student_id = fi.student_id
-          ORDER BY fi.created_at DESC
-        `
-      );
-      return res.json(rows);
-    }
-
-    const studentRows = await queryAsync("SELECT student_id FROM student WHERE user_id = ? LIMIT 1", [req.user.user_id]);
-    if (!studentRows.length) return res.json([]);
-
-    const rows = await queryAsync(
-      `
-        SELECT *
-        FROM finance_invoice
-        WHERE student_id = ? AND status IN ('published', 'partial', 'paid')
-        ORDER BY created_at DESC
-      `,
-      [studentRows[0].student_id]
-    );
-    return res.json(rows);
-  } catch (err) {
-    console.log(err);
-    return res.status(500).json({ message: "Error fetching invoices" });
-  }
-});
-
-app.post("/finance/invoices", verifyToken, checkRole(["admin"]), async (req, res) => {
-  const { student_id, category, grade_context, amount, due_date, notes } = req.body;
-  if (!student_id || amount === undefined) {
-    return res.status(400).json({ message: "student_id and amount are required" });
-  }
-  try {
-    const invoiceNumber = `INV-${Date.now()}-${student_id}`;
-    const result = await queryAsync(
-      `
-        INSERT INTO finance_invoice (student_id, invoice_number, category, grade_context, amount, due_date, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `,
-      [Number(student_id), invoiceNumber, category || "Tuition", grade_context || null, Number(amount), due_date || null, notes || null]
-    );
-    return res.status(201).json({ message: "Invoice created", invoice_id: result.insertId, invoice_number: invoiceNumber });
-  } catch (err) {
-    console.log(err);
-    return res.status(500).json({ message: "Error creating invoice" });
-  }
-});
-
-app.put("/finance/invoices/:id/publish", verifyToken, checkRole(["admin"]), async (req, res) => {
-  try {
-    const result = await queryAsync(
-      "UPDATE finance_invoice SET status = 'published', published_by = ? WHERE invoice_id = ?",
-      [req.user.user_id, Number(req.params.id)]
-    );
-    if (!result.affectedRows) return res.status(404).json({ message: "Invoice not found" });
-    return res.json({ message: "Invoice published" });
-  } catch (err) {
-    console.log(err);
-    return res.status(500).json({ message: "Error publishing invoice" });
-  }
-});
-
-app.post("/finance/invoices/:id/pay", verifyToken, checkRole(["admin", "student"]), async (req, res) => {
-  const { amount, gateway_name, gateway_reference } = req.body;
-  if (!amount || Number(amount) <= 0) {
-    return res.status(400).json({ message: "A valid amount is required" });
-  }
-  try {
-    const invoiceRows = await queryAsync("SELECT * FROM finance_invoice WHERE invoice_id = ? LIMIT 1", [Number(req.params.id)]);
-    if (!invoiceRows.length) return res.status(404).json({ message: "Invoice not found" });
-
-    const invoice = invoiceRows[0];
-    if (req.user.role === "student") {
-      const studentRows = await queryAsync("SELECT student_id FROM student WHERE user_id = ? LIMIT 1", [req.user.user_id]);
-      if (!studentRows.length || Number(studentRows[0].student_id) !== Number(invoice.student_id)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
-    }
-
-    const paymentResult = await queryAsync(
-      `
-        INSERT INTO finance_payment (invoice_id, amount, gateway_name, gateway_reference, status, paid_by, paid_at)
-        VALUES (?, ?, ?, ?, 'success', ?, CURRENT_TIMESTAMP)
-      `,
-      [Number(req.params.id), Number(amount), gateway_name || "manual", gateway_reference || `TXN-${Date.now()}`, req.user.user_id]
-    );
-
-    const paidRows = await queryAsync(
-      "SELECT COALESCE(SUM(amount), 0) AS total_paid FROM finance_payment WHERE invoice_id = ? AND status = 'success'",
-      [Number(req.params.id)]
-    );
-    const totalPaid = Number(paidRows[0]?.total_paid || 0);
-    let nextStatus = "partial";
-    if (totalPaid >= Number(invoice.amount)) nextStatus = "paid";
-
-    await queryAsync("UPDATE finance_invoice SET status = ? WHERE invoice_id = ?", [nextStatus, Number(req.params.id)]);
-
-    const receiptNumber = `RCPT-${paymentResult.insertId}-${Date.now()}`;
-    await queryAsync(
-      "INSERT INTO finance_receipt (payment_id, receipt_number) VALUES (?, ?)",
-      [paymentResult.insertId, receiptNumber]
-    );
-
-    return res.json({ message: "Payment recorded", receipt_number: receiptNumber, status: nextStatus });
-  } catch (err) {
-    console.log(err);
-    return res.status(500).json({ message: "Error processing payment" });
-  }
-});
-
-app.get("/finance/receipts/me", verifyToken, checkRole(["student"]), async (req, res) => {
-  try {
-    const studentRows = await queryAsync("SELECT student_id FROM student WHERE user_id = ? LIMIT 1", [req.user.user_id]);
-    if (!studentRows.length) return res.json([]);
-
-    const rows = await queryAsync(
-      `
-        SELECT fr.receipt_number, fr.issued_at, fp.amount, fp.gateway_name, fp.gateway_reference, fi.invoice_number, fi.category, fi.grade_context
-        FROM finance_receipt fr
-        JOIN finance_payment fp ON fp.payment_id = fr.payment_id
-        JOIN finance_invoice fi ON fi.invoice_id = fp.invoice_id
-        WHERE fi.student_id = ?
-        ORDER BY fr.issued_at DESC
-      `,
-      [studentRows[0].student_id]
-    );
-    return res.json(rows);
-  } catch (err) {
-    console.log(err);
-    return res.status(500).json({ message: "Error fetching receipts" });
-  }
-});
-
-// ===== CERTIFICATE / DOCUMENT REQUEST WORKFLOW =====
-app.get("/document-requests", verifyToken, checkRole(["admin", "teacher", "student"]), async (req, res) => {
-  try {
-    if (req.user.role === "student") {
-      const studentRows = await queryAsync("SELECT student_id FROM student WHERE user_id = ? LIMIT 1", [req.user.user_id]);
-      if (!studentRows.length) return res.json([]);
-      const rows = await queryAsync(
-        "SELECT * FROM document_request WHERE student_id = ? ORDER BY requested_at DESC",
-        [studentRows[0].student_id]
-      );
-      return res.json(rows);
-    }
-
-    const rows = await queryAsync(
-      `
-        SELECT dr.*, s.name AS student_name, s.academic_id
-        FROM document_request dr
-        JOIN student s ON s.student_id = dr.student_id
-        ORDER BY dr.requested_at DESC
-      `
-    );
-    return res.json(rows);
-  } catch (err) {
-    console.log(err);
-    return res.status(500).json({ message: "Error fetching document requests" });
-  }
-});
-
-app.post("/document-requests", verifyToken, checkRole(["admin", "student"]), async (req, res) => {
-  const { student_id, document_type, purpose } = req.body;
-  if (!document_type) return res.status(400).json({ message: "document_type is required" });
-
-  try {
-    let targetStudentId = student_id;
-    if (req.user.role === "student") {
-      const studentRows = await queryAsync("SELECT student_id FROM student WHERE user_id = ? LIMIT 1", [req.user.user_id]);
-      if (!studentRows.length) return res.status(404).json({ message: "Student profile not found" });
-      targetStudentId = studentRows[0].student_id;
-    }
-
-    if (!targetStudentId) {
-      return res.status(400).json({ message: "student_id is required" });
-    }
-
-    const result = await queryAsync(
-      `
-        INSERT INTO document_request (student_id, document_type, purpose)
-        VALUES (?, ?, ?)
-      `,
-      [Number(targetStudentId), document_type, purpose || ""]
-    );
-
-    return res.status(201).json({ message: "Document request submitted", document_request_id: result.insertId });
-  } catch (err) {
-    console.log(err);
-    return res.status(500).json({ message: "Error creating document request" });
-  }
-});
-
-app.put("/document-requests/:id/review", verifyToken, checkRole(["admin", "teacher"]), async (req, res) => {
-  const { status, review_note } = req.body;
-  if (!["approved", "rejected", "pending", "issued"].includes(String(status || "").toLowerCase())) {
-    return res.status(400).json({ message: "Invalid status" });
-  }
-  try {
-    const result = await queryAsync(
-      `
-        UPDATE document_request
-        SET status = ?, review_note = ?, reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP
-        WHERE document_request_id = ?
-      `,
-      [String(status).toLowerCase(), review_note || null, req.user.user_id, Number(req.params.id)]
-    );
-    if (!result.affectedRows) return res.status(404).json({ message: "Document request not found" });
-    return res.json({ message: "Document request reviewed" });
-  } catch (err) {
-    console.log(err);
-    return res.status(500).json({ message: "Error reviewing document request" });
-  }
-});
-
-app.put("/document-requests/:id/issue", verifyToken, checkRole(["admin", "teacher"]), async (req, res) => {
-  const { issued_url } = req.body;
-  try {
-    const result = await queryAsync(
-      `
-        UPDATE document_request
-        SET status = 'issued', issued_url = ?, reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP
-        WHERE document_request_id = ?
-      `,
-      [issued_url || null, req.user.user_id, Number(req.params.id)]
-    );
-    if (!result.affectedRows) return res.status(404).json({ message: "Document request not found" });
-    return res.json({ message: "Document marked as issued" });
-  } catch (err) {
-    console.log(err);
-    return res.status(500).json({ message: "Error issuing document" });
-  }
-});

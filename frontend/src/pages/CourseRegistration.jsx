@@ -13,11 +13,21 @@ function CourseRegistration() {
   const [selectedCourse, setSelectedCourse] = useState("");
   const [reviewNotes, setReviewNotes] = useState({});
   const [error, setError] = useState("");
+  const [showBacklogOnly, setShowBacklogOnly] = useState(false);
 
   const pendingCount = useMemo(
     () => requests.filter((item) => item.status === "Pending").length,
     [requests]
   );
+
+  const requestableCourses = useMemo(() => {
+    const base = availableCourses.filter(
+      (course) => !course.is_enrolled && !course.pending_request_id && course.can_request
+    );
+
+    if (!showBacklogOnly) return base;
+    return base.filter((course) => course.registration_type === "Backlog");
+  }, [availableCourses, showBacklogOnly]);
 
   const fetchRequests = async () => {
     try {
@@ -89,6 +99,18 @@ function CourseRegistration() {
               <div className="row g-3">
                 <div className="col-md-6">
                   <label className="form-label">Available Course</label>
+                  <div className="form-check mb-2">
+                    <input
+                      id="showBacklogOnly"
+                      className="form-check-input"
+                      type="checkbox"
+                      checked={showBacklogOnly}
+                      onChange={(e) => setShowBacklogOnly(e.target.checked)}
+                    />
+                    <label htmlFor="showBacklogOnly" className="form-check-label">
+                      Show backlog courses only
+                    </label>
+                  </div>
                   <select
                     className="form-select"
                     value={selectedCourse}
@@ -96,13 +118,11 @@ function CourseRegistration() {
                     required
                   >
                     <option value="">Select course</option>
-                    {availableCourses
-                      .filter((course) => !course.is_enrolled && !course.pending_request_id)
-                      .map((course) => (
+                    {requestableCourses.map((course) => (
                         <option key={course.course_id} value={course.course_id}>
-                          {course.course_name} {course.course_code ? `(${course.course_code})` : ""}
+                          [{course.registration_type}] {course.course_name} {course.course_code ? `(${course.course_code})` : ""}
                         </option>
-                      ))}
+                    ))}
                   </select>
                 </div>
                 <div className="col-md-6">
@@ -135,6 +155,7 @@ function CourseRegistration() {
                 <tr>
                   {!isStudent && <th>Student</th>}
                   <th>Course</th>
+                  <th>Type</th>
                   <th>Status</th>
                   <th>Student Note</th>
                   <th>Reviewer Note</th>
@@ -145,7 +166,7 @@ function CourseRegistration() {
               <tbody>
                 {requests.length === 0 && (
                   <tr>
-                    <td colSpan={canReview ? (isStudent ? 6 : 7) : isStudent ? 5 : 6} className="text-center py-4">
+                    <td colSpan={canReview ? (isStudent ? 7 : 8) : isStudent ? 6 : 7} className="text-center py-4">
                       No requests found.
                     </td>
                   </tr>
@@ -156,6 +177,11 @@ function CourseRegistration() {
                     {!isStudent && <td>{item.student_name}</td>}
                     <td>
                       {item.course_name} {item.course_code ? `(${item.course_code})` : ""}
+                    </td>
+                    <td>
+                      <span className={`badge ${item.registration_type === "Backlog" ? "bg-danger" : "bg-info"}`}>
+                        {item.registration_type || "Regular"}
+                      </span>
                     </td>
                     <td>
                       <span
@@ -225,6 +251,8 @@ function CourseRegistration() {
                 <thead>
                   <tr>
                     <th>Course</th>
+                    <th>Semester</th>
+                    <th>Registration Type</th>
                     <th>Department</th>
                     <th>Credits</th>
                     <th>State</th>
@@ -233,7 +261,7 @@ function CourseRegistration() {
                 <tbody>
                   {availableCourses.length === 0 && (
                     <tr>
-                      <td colSpan="4" className="text-center py-4">
+                      <td colSpan="6" className="text-center py-4">
                         No course data found.
                       </td>
                     </tr>
@@ -244,6 +272,12 @@ function CourseRegistration() {
                       <td>
                         {course.course_name} {course.course_code ? `(${course.course_code})` : ""}
                       </td>
+                      <td>{course.course_semester || "-"}</td>
+                      <td>
+                        <span className={`badge ${course.registration_type === "Backlog" ? "bg-danger" : "bg-info"}`}>
+                          {course.registration_type || "Regular"}
+                        </span>
+                      </td>
                       <td>{course.department || "-"}</td>
                       <td>{course.credits || "-"}</td>
                       <td>
@@ -251,6 +285,10 @@ function CourseRegistration() {
                           <span className="badge bg-success">Enrolled</span>
                         ) : course.pending_request_id ? (
                           <span className="badge bg-warning text-dark">Pending Request</span>
+                        ) : !course.can_request ? (
+                          <span className="badge bg-secondary" title={course.registration_locked_reason || "Not eligible yet"}>
+                            Not Eligible Yet
+                          </span>
                         ) : (
                           <span className="badge bg-secondary">Not Enrolled</span>
                         )}

@@ -28,6 +28,13 @@ function Profile() {
     section: ""
   });
 
+  const yearSemesterOptions = {
+    1: ["1", "2"],
+    2: ["3", "4"],
+    3: ["5", "6"],
+    4: ["7", "8"]
+  };
+
   const isStudent = user?.role === "student";
 
   const toTitleCase = (value) => {
@@ -93,6 +100,21 @@ function Profile() {
   }, []);
 
   const handleChange = (e) => {
+    if (e.target.name === "year") {
+      const nextYear = Number(e.target.value);
+      const allowedSemesters = yearSemesterOptions[nextYear] || [];
+      const resolvedSemester = allowedSemesters.includes(String(formData.semester))
+        ? String(formData.semester)
+        : (allowedSemesters[0] || "");
+
+      setFormData((prev) => ({
+        ...prev,
+        year: String(nextYear),
+        semester: resolvedSemester
+      }));
+      return;
+    }
+
     setFormData((prev) => ({
       ...prev,
       [e.target.name]: e.target.value
@@ -213,11 +235,22 @@ function Profile() {
                     <>
                       <div className="col-md-4">
                         <label className="form-label">Year</label>
-                        <input type="number" className="form-control" name="year" value={formData.year} onChange={handleChange} />
+                        <select className="form-control" name="year" value={formData.year} onChange={handleChange}>
+                          <option value="">Select year</option>
+                          <option value="1">1st Year</option>
+                          <option value="2">2nd Year</option>
+                          <option value="3">3rd Year</option>
+                          <option value="4">4th Year</option>
+                        </select>
                       </div>
                       <div className="col-md-4">
                         <label className="form-label">Semester</label>
-                        <input className="form-control" name="semester" value={formData.semester} onChange={handleChange} />
+                        <select className="form-control" name="semester" value={formData.semester} onChange={handleChange}>
+                          <option value="">Select semester</option>
+                          {(yearSemesterOptions[Number(formData.year)] || []).map((sem) => (
+                            <option key={sem} value={sem}>Semester {sem}</option>
+                          ))}
+                        </select>
                       </div>
                       <div className="col-md-4">
                         <label className="form-label">Section</label>
