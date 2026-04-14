@@ -389,6 +389,7 @@ const ensureFeatureTables = () => {
     "ALTER TABLE faculty ADD COLUMN academic_id VARCHAR(80) NULL",
     "ALTER TABLE course ADD COLUMN semester VARCHAR(20) NULL",
     "ALTER TABLE course ADD COLUMN description TEXT NULL",
+    "ALTER TABLE result ADD COLUMN exam_type ENUM('midsem','endsem','semester') DEFAULT 'semester'",
     "ALTER TABLE announcement ADD COLUMN target_roles VARCHAR(120) NULL",
     "ALTER TABLE announcement ADD COLUMN target_course_id INT NULL",
     "ALTER TABLE announcement ADD COLUMN target_class_id INT NULL",
@@ -1212,6 +1213,13 @@ const getResultSchema = (callback) => {
         ? "total_marks"
         : columns.includes("total")
         ? "total"
+        : null,
+      examTypeColumn: columns.includes("exam_type")
+        ? "exam_type"
+        : columns.includes("result_type")
+        ? "result_type"
+        : columns.includes("exam")
+        ? "exam"
         : null
     });
   });
@@ -2186,7 +2194,7 @@ app.get("/courses", verifyToken, checkRole(["admin", "teacher", "student"]), (re
 });
 
 app.post("/courses", verifyToken, checkRole(["admin"]), (req, res) => {
-  const { course_name, course_code, semester, department, description, faculty_id } = req.body;
+  const { course_name, course_code, semester, department, description, faculty_id, credits } = req.body;
 
   if (!course_name || !department) {
     return res.status(400).send("Course name and department are required");
@@ -2199,12 +2207,19 @@ app.post("/courses", verifyToken, checkRole(["admin"]), (req, res) => {
     return res.status(400).send("Invalid faculty selected");
   }
 
+  const normalizedCredits = credits === undefined || credits === null || credits === ""
+    ? 4
+    : Number(credits);
+  if (Number.isNaN(normalizedCredits) || normalizedCredits <= 0) {
+    return res.status(400).send("Credits must be a positive number");
+  }
+
   const query = `
-    INSERT INTO course (course_name, course_code, semester, department, description, faculty_id)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO course (course_name, course_code, semester, department, description, faculty_id, credits)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `;
 
-  db.query(query, [course_name, computedCode, semester || null, department, description || "", normalizedFacultyId], (err, result) => {
+  db.query(query, [course_name, computedCode, semester || null, department, description || "", normalizedFacultyId, normalizedCredits], (err, result) => {
     if (err) {
       console.log("add course error", err);
       if (err.code === "ER_DUP_ENTRY") {
@@ -2223,7 +2238,7 @@ app.post("/courses", verifyToken, checkRole(["admin"]), (req, res) => {
 
 app.put("/courses/:id", verifyToken, checkRole(["admin"]), (req, res) => {
   const { id } = req.params;
-  const { course_name, course_code, semester, department, description, faculty_id } = req.body;
+  const { course_name, course_code, semester, department, description, faculty_id, credits } = req.body;
 
   if (!course_name || !department) {
     return res.status(400).send("Course name and department are required");
@@ -2234,13 +2249,20 @@ app.put("/courses/:id", verifyToken, checkRole(["admin"]), (req, res) => {
     return res.status(400).send("Invalid faculty selected");
   }
 
+  const normalizedCredits = credits === undefined || credits === null || credits === ""
+    ? 4
+    : Number(credits);
+  if (Number.isNaN(normalizedCredits) || normalizedCredits <= 0) {
+    return res.status(400).send("Credits must be a positive number");
+  }
+
   const query = `
     UPDATE course
-    SET course_name = ?, course_code = ?, semester = ?, department = ?, description = ?, faculty_id = ?
+    SET course_name = ?, course_code = ?, semester = ?, department = ?, description = ?, faculty_id = ?, credits = ?
     WHERE course_id = ?
   `;
 
-  db.query(query, [course_name, course_code || null, semester || null, department, description || "", normalizedFacultyId, id], (err, result) => {
+  db.query(query, [course_name, course_code || null, semester || null, department, description || "", normalizedFacultyId, normalizedCredits, id], (err, result) => {
     if (err) {
       console.log("update course error", err);
       if (err.code === "ER_DUP_ENTRY") {
@@ -2602,10 +2624,12 @@ app.get("/results", verifyToken, checkRole(["admin", "teacher", "student"]), asy
         r.${schema.idColumn} AS result_id,
         r.student_id,
         r.course_id,
+        ${schema.examTypeColumn ? `LOWER(COALESCE(r.${schema.examTypeColumn}, 'semester'))` : "'semester'"} AS exam_type,
         r.${schema.marksColumn} AS marks_obtained,
         r.${schema.totalColumn} AS total_marks,
         s.name AS student_name,
-        c.course_name AS course_name
+        c.course_name AS course_name,
+        c.credits AS credits
       FROM result r
       JOIN student s ON r.student_id = s.student_id
       JOIN course c ON r.course_id = c.course_id
@@ -2622,7 +2646,7 @@ app.get("/results", verifyToken, checkRole(["admin", "teacher", "student"]), asy
 });
 
 app.post("/results", verifyToken, checkRole(["admin", "teacher"]), async (req, res) => {
-  const { student_id, course_id, marks_obtained, total_marks } = req.body;
+  const { student_id, course_id, marks_obtained, total_marks, exam_type } = req.body;
 
   if (!student_id || !course_id || marks_obtained === undefined || marks_obtained === null || !total_marks) {
     return res.status(400).send("All result fields are required");
@@ -2632,6 +2656,11 @@ app.post("/results", verifyToken, checkRole(["admin", "teacher"]), async (req, r
     const schema = await getResultSchemaAsync();
     if (!schema.marksColumn || !schema.totalColumn) {
       return res.status(500).send("Result table schema is not supported");
+    }
+
+    const normalizedExamType = String(exam_type || "semester").toLowerCase();
+    if (!["midsem", "endsem", "semester"].includes(normalizedExamType)) {
+      return res.status(400).json({ message: "exam_type must be midsem, endsem or semester" });
     }
 
     if (req.user.role === "teacher") {
@@ -2654,18 +2683,26 @@ app.post("/results", verifyToken, checkRole(["admin", "teacher"]), async (req, r
       }
     }
 
+    const insertColumns = ["student_id", "course_id", schema.marksColumn, schema.totalColumn];
+    const insertValues = [student_id, course_id, marks_obtained, total_marks];
+
+    if (schema.examTypeColumn) {
+      insertColumns.push(schema.examTypeColumn);
+      insertValues.push(normalizedExamType);
+    }
+
     const query = `
-      INSERT INTO result (student_id, course_id, ${schema.marksColumn}, ${schema.totalColumn})
-      VALUES (?, ?, ?, ?)
+      INSERT INTO result (${insertColumns.join(", ")})
+      VALUES (${insertColumns.map(() => "?").join(", ")})
     `;
 
-    const result = await queryAsync(query, [student_id, course_id, marks_obtained, total_marks]);
+    const result = await queryAsync(query, insertValues);
     await createAuditLog({
       action: "result.create",
       actor_user_id: req.user.user_id,
       target_type: "result",
       target_id: result.insertId,
-      details: { student_id, course_id, marks_obtained, total_marks },
+      details: { student_id, course_id, marks_obtained, total_marks, exam_type: normalizedExamType },
       req
     });
     return res.status(201).json({
@@ -2681,7 +2718,7 @@ app.post("/results", verifyToken, checkRole(["admin", "teacher"]), async (req, r
 
 app.put("/results/:id", verifyToken, checkRole(["admin", "teacher"]), async (req, res) => {
   const { id } = req.params;
-  const { student_id, course_id, marks_obtained, total_marks } = req.body;
+  const { student_id, course_id, marks_obtained, total_marks, exam_type } = req.body;
 
   if (!student_id || !course_id || marks_obtained === undefined || marks_obtained === null || !total_marks) {
     return res.status(400).send("All result fields are required");
@@ -2691,6 +2728,11 @@ app.put("/results/:id", verifyToken, checkRole(["admin", "teacher"]), async (req
     const schema = await getResultSchemaAsync();
     if (!schema.idColumn || !schema.marksColumn || !schema.totalColumn) {
       return res.status(500).send("Result table schema is not supported");
+    }
+
+    const normalizedExamType = String(exam_type || "semester").toLowerCase();
+    if (!["midsem", "endsem", "semester"].includes(normalizedExamType)) {
+      return res.status(400).json({ message: "exam_type must be midsem, endsem or semester" });
     }
 
     const existingRows = await queryAsync(
@@ -2729,13 +2771,26 @@ app.put("/results/:id", verifyToken, checkRole(["admin", "teacher"]), async (req
       }
     }
 
+    const updateFields = [
+      "student_id = ?",
+      "course_id = ?",
+      `${schema.marksColumn} = ?`,
+      `${schema.totalColumn} = ?`
+    ];
+    const updateValues = [student_id, course_id, marks_obtained, total_marks];
+
+    if (schema.examTypeColumn) {
+      updateFields.push(`${schema.examTypeColumn} = ?`);
+      updateValues.push(normalizedExamType);
+    }
+
     const query = `
       UPDATE result
-      SET student_id = ?, course_id = ?, ${schema.marksColumn} = ?, ${schema.totalColumn} = ?
+      SET ${updateFields.join(", ")}
       WHERE ${schema.idColumn} = ?
     `;
 
-    const result = await queryAsync(query, [student_id, course_id, marks_obtained, total_marks, id]);
+    const result = await queryAsync(query, [...updateValues, id]);
     if (result.affectedRows === 0) {
       return res.status(404).send("Result not found");
     }
@@ -2745,7 +2800,7 @@ app.put("/results/:id", verifyToken, checkRole(["admin", "teacher"]), async (req
       actor_user_id: req.user.user_id,
       target_type: "result",
       target_id: id,
-      details: { student_id, course_id, marks_obtained, total_marks },
+      details: { student_id, course_id, marks_obtained, total_marks, exam_type: normalizedExamType },
       req
     });
 

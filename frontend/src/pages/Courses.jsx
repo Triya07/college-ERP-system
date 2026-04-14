@@ -10,6 +10,7 @@ function Courses() {
   const [formData, setFormData] = useState({
     course_name: "",
     department: "",
+    credits: "4",
     faculty_id: ""
   });
   const [editingId, setEditingId] = useState(null);
@@ -58,6 +59,7 @@ function Courses() {
     setFormData({
       course_name: "",
       department: "",
+      credits: "4",
       faculty_id: ""
     });
     setEditingId(null);
@@ -89,6 +91,7 @@ function Courses() {
     setFormData({
       course_name: course.course_name || "",
       department: course.department || "",
+      credits: course.credits !== undefined && course.credits !== null ? String(course.credits) : "4",
       faculty_id: course.faculty_id ? String(course.faculty_id) : ""
     });
   };
@@ -143,6 +146,20 @@ function Courses() {
               </div>
 
               <div className="col-md-6">
+                <input
+                  type="number"
+                  name="credits"
+                  min="1"
+                  max="20"
+                  placeholder="Credits"
+                  className="form-control"
+                  value={formData.credits}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+
+              <div className="col-md-6">
                 <select
                   name="faculty_id"
                   className="form-select"
@@ -185,6 +202,7 @@ function Courses() {
               <th>ID</th>
               <th>Course Name</th>
               <th>Department</th>
+              <th>Credits</th>
               <th>Assigned Faculty</th>
               {isAdmin && <th>Actions</th>}
             </tr>
@@ -192,7 +210,7 @@ function Courses() {
           <tbody>
             {!loading && courses.length === 0 && (
               <tr>
-                <td colSpan={isAdmin ? "5" : "4"} className="text-center">
+                <td colSpan={isAdmin ? "6" : "5"} className="text-center">
                   {isAdmin ? "No courses found." : "No courses assigned to you yet."}
                 </td>
               </tr>
@@ -203,6 +221,7 @@ function Courses() {
                 <td>{course.course_id}</td>
                 <td>{course.course_name}</td>
                 <td>{course.department}</td>
+                <td>{course.credits ?? "-"}</td>
                 <td>{course.faculty_name || "Unassigned"}</td>
                 {isAdmin && (
                   <td>
