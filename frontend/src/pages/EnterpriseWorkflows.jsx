@@ -213,7 +213,12 @@ function EnterpriseWorkflows() {
           ["transport", "Transport"],
           ["leave", "Leave Approval"],
           ["events", "Academic Events"]
-        ].map(([id, label], idx) => (
+        ].filter(([id]) => {
+          if (user?.role === "teacher") {
+            return !["library", "hostel", "transport"].includes(id);
+          }
+          return true;
+        }).map(([id, label], idx) => (
           <li className="nav-item" key={id}>
             <button className={`nav-link ${idx === 0 ? "active" : ""}`} data-bs-toggle="pill" data-bs-target={`#tab-${id}`} type="button">{label}</button>
           </li>
@@ -253,6 +258,7 @@ function EnterpriseWorkflows() {
                   <thead>
                     <tr>
                       <th>Title</th>
+                      <th>Description</th>
                       <th>Status</th>
                       <th>Requester</th>
                       {isAdmin && <th>Review</th>}
@@ -262,6 +268,7 @@ function EnterpriseWorkflows() {
                     {rows.map((r) => (
                       <tr key={r.request_id}>
                         <td>{r.title}</td>
+                        <td className="small text-muted italic">{r.description || "-"}</td>
                         <td>{getStatusLabel(r.status)}</td>
                         <td>{r.requester_email}</td>
                         {isAdmin && (
@@ -292,7 +299,7 @@ function EnterpriseWorkflows() {
               <div className="col-md-2"><button className="btn btn-primary w-100" type="submit">Apply</button></div>
             </form>
           )}
-          <div className="table-responsive"><table className="table table-sm table-striped"><thead><tr><th>Type</th><th>From</th><th>To</th><th>Status</th><th>Requester</th>{isAdmin && <th>Review</th>}</tr></thead><tbody>{leaveRequests.map((r) => <tr key={r.leave_id}><td>{r.leave_type}</td><td>{new Date(r.from_date).toLocaleDateString()}</td><td>{new Date(r.to_date).toLocaleDateString()}</td><td>{getStatusLabel(r.status)}</td><td>{r.requester_email}</td>{isAdmin && <td>{renderReviewActions(r.status, () => reviewLeave(r.leave_id, "approved"), () => reviewLeave(r.leave_id, "rejected"))}</td>}</tr>)}</tbody></table></div>
+          <div className="table-responsive"><table className="table table-sm table-striped"><thead><tr><th>Type</th><th>From</th><th>To</th><th>Reason</th><th>Status</th><th>Requester</th>{isAdmin && <th>Review</th>}</tr></thead><tbody>{leaveRequests.map((r) => <tr key={r.leave_id}><td>{r.leave_type}</td><td>{new Date(r.from_date).toLocaleDateString()}</td><td>{new Date(r.to_date).toLocaleDateString()}</td><td className="small text-muted italic">{r.reason || "-"}</td><td>{getStatusLabel(r.status)}</td><td>{r.requester_email}</td>{isAdmin && <td>{renderReviewActions(r.status, () => reviewLeave(r.leave_id, "approved"), () => reviewLeave(r.leave_id, "rejected"))}</td>}</tr>)}</tbody></table></div>
         </div>
 
         <div className="tab-pane fade" id="tab-events">

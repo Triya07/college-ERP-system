@@ -99,16 +99,18 @@ function Sidebar() {
           </NavLink>
         </li>
 
-        <li className="nav-item">
-          <NavLink
-            className={({ isActive }) =>
-              "nav-link text-white" + (isActive ? " active" : "")
-            }
-            to="/timetable"
-          >
-            <MdSchedule className="me-2" style={{ display: "inline" }} /> Timetable
-          </NavLink>
-        </li>
+        {role !== "admin" && (
+          <li className="nav-item">
+            <NavLink
+              className={({ isActive }) =>
+                "nav-link text-white" + (isActive ? " active" : "")
+              }
+              to="/timetable"
+            >
+              <MdSchedule className="me-2" style={{ display: "inline" }} /> Timetable
+            </NavLink>
+          </li>
+        )}
 
         {role !== "teacher" && (
           <li className="nav-item">

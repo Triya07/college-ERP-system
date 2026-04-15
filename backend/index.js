@@ -1929,6 +1929,7 @@ const server = app.listen(PORT, () => {
 
 server.on("error", (err) => {
   if (err && err.code === "EADDRINUSE") {
+
     console.error(`❌ Port ${PORT} is already in use. Stop the existing backend instance before starting a new one.`);
     process.exit(1);
   }
