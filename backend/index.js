@@ -1606,19 +1606,11 @@ const server = app.listen(PORT, () => {
 
 server.on("error", (err) => {
   if (err && err.code === "EADDRINUSE") {
-<<<<<<< HEAD
-    console.error(`❌ Port ${PORT} is already in use. Stop the existing backend instance before starting a new one.`);
+    console.error(`❌ Port ${PORT} is already in use. Stop the other process or change PORT in backend/.env.`);
     process.exit(1);
   }
 
   console.error("❌ Server startup error:", err);
-=======
-    console.error(`Port ${PORT} is already in use. Stop the other process or change PORT in backend/.env.`);
-    process.exit(1);
-  }
-
-  console.error("Server failed to start:", err);
->>>>>>> a5906f107313758b6ab3f4daa8bc79d130a7576f
   process.exit(1);
 });
 
