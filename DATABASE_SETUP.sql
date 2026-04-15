@@ -1,5 +1,6 @@
 -- College ERP Database Setup Instructions
 -- Run these commands in MySQL to set up the required tables
+-- NOTE: CHECK constraints are enforced in MySQL 8.0.16+.
 
 -- ===== PRE-STEP: Ensure target database is selected =====
 CREATE DATABASE IF NOT EXISTS college_erp;
@@ -19,17 +20,8 @@ DROP TABLE IF EXISTS password_reset_token;
 DROP TABLE IF EXISTS academic_event;
 DROP TABLE IF EXISTS academic_config;
 DROP TABLE IF EXISTS course_registration_request;
-DROP TABLE IF EXISTS document_request;
-DROP TABLE IF EXISTS finance_receipt;
-DROP TABLE IF EXISTS finance_payment;
-DROP TABLE IF EXISTS finance_invoice;
-DROP TABLE IF EXISTS payroll_record;
 DROP TABLE IF EXISTS leave_request;
 DROP TABLE IF EXISTS campus_service_request;
-DROP TABLE IF EXISTS lms_submission;
-DROP TABLE IF EXISTS lms_assignment;
-DROP TABLE IF EXISTS exam_hall_ticket;
-DROP TABLE IF EXISTS exam_workflow;
 DROP TABLE IF EXISTS guardian_profile;
 DROP TABLE IF EXISTS notification;
 DROP TABLE IF EXISTS announcement;
@@ -95,6 +87,17 @@ CREATE TABLE student (
   academic_id VARCHAR(80),
   phone VARCHAR(15),
   enrollment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT chk_student_year_range
+    CHECK (year BETWEEN 1 AND 4),
+  CONSTRAINT chk_student_semester_range
+    CHECK (semester IN ('1','2','3','4','5','6','7','8')),
+  CONSTRAINT chk_student_year_semester_pair
+    CHECK (
+      (year = 1 AND semester IN ('1','2')) OR
+      (year = 2 AND semester IN ('3','4')) OR
+      (year = 3 AND semester IN ('5','6')) OR
+      (year = 4 AND semester IN ('7','8'))
+    ),
   FOREIGN KEY (user_id) REFERENCES user(user_id) ON DELETE CASCADE
 );
 
@@ -109,6 +112,8 @@ CREATE TABLE course (
   faculty_id INT,
   credits INT DEFAULT 4,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT chk_course_semester_range
+    CHECK (semester IS NULL OR semester IN ('1','2','3','4','5','6','7','8')),
   FOREIGN KEY (faculty_id) REFERENCES faculty(faculty_id) ON DELETE SET NULL
 );
 
@@ -349,73 +354,7 @@ CREATE TABLE guardian_profile (
   FOREIGN KEY (student_id) REFERENCES student(student_id) ON DELETE CASCADE
 );
 
--- ===== STEP 16: Exam timetable + hall ticket + publish workflow =====
-CREATE TABLE exam_workflow (
-  exam_id INT PRIMARY KEY AUTO_INCREMENT,
-  course_id INT NOT NULL,
-  exam_title VARCHAR(150) NOT NULL,
-  exam_date DATE NOT NULL,
-  start_time TIME,
-  end_time TIME,
-  venue VARCHAR(100),
-  publish_status ENUM('draft', 'published') DEFAULT 'draft',
-  hall_ticket_generated BOOLEAN DEFAULT FALSE,
-  created_by INT,
-  published_by INT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (course_id) REFERENCES course(course_id) ON DELETE CASCADE,
-  FOREIGN KEY (created_by) REFERENCES user(user_id) ON DELETE SET NULL,
-  FOREIGN KEY (published_by) REFERENCES user(user_id) ON DELETE SET NULL
-);
-
-CREATE TABLE exam_hall_ticket (
-  hall_ticket_id INT PRIMARY KEY AUTO_INCREMENT,
-  exam_id INT NOT NULL,
-  student_id INT NOT NULL,
-  ticket_number VARCHAR(50) NOT NULL,
-  seat_number VARCHAR(50),
-  issued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uniq_exam_student_ticket (exam_id, student_id),
-  UNIQUE KEY uniq_ticket_number (ticket_number),
-  FOREIGN KEY (exam_id) REFERENCES exam_workflow(exam_id) ON DELETE CASCADE,
-  FOREIGN KEY (student_id) REFERENCES student(student_id) ON DELETE CASCADE
-);
-
--- ===== STEP 17: Assignment / LMS =====
-CREATE TABLE lms_assignment (
-  assignment_id INT PRIMARY KEY AUTO_INCREMENT,
-  course_id INT NOT NULL,
-  title VARCHAR(150) NOT NULL,
-  instructions TEXT,
-  due_date DATETIME,
-  max_marks DECIMAL(6,2) DEFAULT 100,
-  status ENUM('draft', 'published', 'closed') DEFAULT 'published',
-  created_by INT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (course_id) REFERENCES course(course_id) ON DELETE CASCADE,
-  FOREIGN KEY (created_by) REFERENCES user(user_id) ON DELETE SET NULL
-);
-
-CREATE TABLE lms_submission (
-  submission_id INT PRIMARY KEY AUTO_INCREMENT,
-  assignment_id INT NOT NULL,
-  student_id INT NOT NULL,
-  submission_text TEXT,
-  attachment_url VARCHAR(255),
-  score DECIMAL(6,2),
-  feedback VARCHAR(255),
-  submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  reviewed_at TIMESTAMP NULL,
-  reviewed_by INT,
-  UNIQUE KEY uniq_assignment_submission (assignment_id, student_id),
-  FOREIGN KEY (assignment_id) REFERENCES lms_assignment(assignment_id) ON DELETE CASCADE,
-  FOREIGN KEY (student_id) REFERENCES student(student_id) ON DELETE CASCADE,
-  FOREIGN KEY (reviewed_by) REFERENCES user(user_id) ON DELETE SET NULL
-);
-
--- ===== STEP 18: Library / Hostel / Transport workflows =====
+-- ===== STEP 16: Library / Hostel / Transport workflows =====
 CREATE TABLE campus_service_request (
   request_id INT PRIMARY KEY AUTO_INCREMENT,
   service_type ENUM('library', 'hostel', 'transport') NOT NULL,
@@ -431,7 +370,7 @@ CREATE TABLE campus_service_request (
   FOREIGN KEY (reviewed_by) REFERENCES user(user_id) ON DELETE SET NULL
 );
 
--- ===== STEP 19: Leave / approval workflow =====
+-- ===== STEP 17: Leave / approval workflow =====
 CREATE TABLE leave_request (
   leave_id INT PRIMARY KEY AUTO_INCREMENT,
   requester_user_id INT NOT NULL,
@@ -448,83 +387,15 @@ CREATE TABLE leave_request (
   FOREIGN KEY (reviewed_by) REFERENCES user(user_id) ON DELETE SET NULL
 );
 
--- ===== STEP 20: Payroll / HR =====
-CREATE TABLE payroll_record (
-  payroll_id INT PRIMARY KEY AUTO_INCREMENT,
-  employee_user_id INT NOT NULL,
-  payroll_month VARCHAR(20) NOT NULL,
-  basic_pay DECIMAL(10,2) NOT NULL,
-  allowances DECIMAL(10,2) DEFAULT 0,
-  deductions DECIMAL(10,2) DEFAULT 0,
-  net_pay DECIMAL(10,2) NOT NULL,
-  status ENUM('draft', 'processed', 'paid') DEFAULT 'draft',
-  processed_by INT,
-  processed_at TIMESTAMP NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uniq_employee_month (employee_user_id, payroll_month),
-  FOREIGN KEY (employee_user_id) REFERENCES user(user_id) ON DELETE CASCADE,
-  FOREIGN KEY (processed_by) REFERENCES user(user_id) ON DELETE SET NULL
-);
+-- ===== STEP 18: Performance indexes for evaluation =====
+CREATE INDEX idx_notification_user_read_created ON notification (user_id, is_read, created_at);
+CREATE INDEX idx_registration_student_status ON course_registration_request (student_id, status);
+CREATE INDEX idx_attendance_student_course_date ON attendance (student_id, course_id, date);
+CREATE INDEX idx_class_attendance_student_class_date ON class_attendance (student_id, class_id, session_date);
+CREATE INDEX idx_leave_request_user_status ON leave_request (requester_user_id, status);
+CREATE INDEX idx_service_request_user_status ON campus_service_request (requester_user_id, status);
 
--- ===== STEP 21: Invoice / payment gateway / receipt workflow =====
-CREATE TABLE finance_invoice (
-  invoice_id INT PRIMARY KEY AUTO_INCREMENT,
-  student_id INT NOT NULL,
-  invoice_number VARCHAR(50) NOT NULL,
-  category VARCHAR(80) DEFAULT 'Tuition',
-  grade_context VARCHAR(20),
-  amount DECIMAL(10,2) NOT NULL,
-  due_date DATE,
-  status ENUM('draft', 'published', 'partial', 'paid', 'void') DEFAULT 'draft',
-  notes VARCHAR(255),
-  published_by INT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uniq_invoice_number (invoice_number),
-  FOREIGN KEY (student_id) REFERENCES student(student_id) ON DELETE CASCADE,
-  FOREIGN KEY (published_by) REFERENCES user(user_id) ON DELETE SET NULL
-);
-
-CREATE TABLE finance_payment (
-  payment_id INT PRIMARY KEY AUTO_INCREMENT,
-  invoice_id INT NOT NULL,
-  amount DECIMAL(10,2) NOT NULL,
-  gateway_name VARCHAR(60),
-  gateway_reference VARCHAR(120),
-  status ENUM('initiated', 'success', 'failed') DEFAULT 'initiated',
-  paid_by INT,
-  paid_at TIMESTAMP NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (invoice_id) REFERENCES finance_invoice(invoice_id) ON DELETE CASCADE,
-  FOREIGN KEY (paid_by) REFERENCES user(user_id) ON DELETE SET NULL
-);
-
-CREATE TABLE finance_receipt (
-  receipt_id INT PRIMARY KEY AUTO_INCREMENT,
-  payment_id INT NOT NULL,
-  receipt_number VARCHAR(50) NOT NULL,
-  issued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uniq_receipt_number (receipt_number),
-  FOREIGN KEY (payment_id) REFERENCES finance_payment(payment_id) ON DELETE CASCADE
-);
-
--- ===== STEP 22: Certificate / document request workflow =====
-CREATE TABLE document_request (
-  document_request_id INT PRIMARY KEY AUTO_INCREMENT,
-  student_id INT NOT NULL,
-  document_type VARCHAR(100) NOT NULL,
-  purpose VARCHAR(255),
-  status ENUM('pending', 'approved', 'rejected', 'issued') DEFAULT 'pending',
-  requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  reviewed_at TIMESTAMP NULL,
-  reviewed_by INT,
-  review_note VARCHAR(255),
-  issued_url VARCHAR(255),
-  FOREIGN KEY (student_id) REFERENCES student(student_id) ON DELETE CASCADE,
-  FOREIGN KEY (reviewed_by) REFERENCES user(user_id) ON DELETE SET NULL
-);
-
--- ===== STEP 23: Seed default admin account =====
+-- ===== STEP 19: Seed default admin account =====
 -- NOTE: reset this seeded admin password immediately after first login.
 INSERT INTO user (email, password, role, username, academic_id, is_active)
 VALUES ('admin@college.com', '$2a$10$Ad/xzZffP2LxmsNLv2ADjeQnKtpRguOnQKjA4EUKgNU3EH04y8iRO', 'admin', 'admin', 'ADMIN001', TRUE)
@@ -543,6 +414,15 @@ ON DUPLICATE KEY UPDATE
   name = 'System Admin',
   department = 'Administration',
   phone = '';
+
+-- ===== STEP 20: Constraint Validation (for viva/demo) =====
+-- Expected: success
+-- INSERT INTO student (user_id, name, department, year, semester, section, roll_number, academic_id, phone)
+-- VALUES (99991, 'Valid Demo', 'CSE', 2, '4', 'A', 'DEMO_VALID_001', 'DEMO_VALID_001', '9999999999');
+
+-- Expected: fail (Year 1 cannot be Semester 5)
+-- INSERT INTO student (user_id, name, department, year, semester, section, roll_number, academic_id, phone)
+-- VALUES (99992, 'Invalid Demo', 'CSE', 1, '5', 'A', 'DEMO_INVALID_001', 'DEMO_INVALID_001', '9999999998');
 
 -- ===== VERIFICATION: Verify tables were created correctly =====
 SHOW TABLES;

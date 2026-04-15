@@ -5,6 +5,13 @@ import "./Auth.css";
 import { AiOutlineMail, AiOutlineLock, AiOutlineUser, AiOutlineBook, AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
 
 function Auth() {
+  const yearSemesterOptions = {
+    1: ["1", "2"],
+    2: ["3", "4"],
+    3: ["5", "6"],
+    4: ["7", "8"]
+  };
+
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({
     email: "",
@@ -13,6 +20,7 @@ function Auth() {
     role: "student",
     department: "CSE",
     year: 1,
+    semester: "1",
     phone: ""
   });
   const [error, setError] = useState("");
@@ -32,6 +40,16 @@ function Auth() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+
+    if (name === "year") {
+      const allowedSemesters = yearSemesterOptions[Number(value)] || ["1", "2"];
+      const resolvedSemester = allowedSemesters.includes(String(formData.semester))
+        ? String(formData.semester)
+        : allowedSemesters[0];
+      setFormData({ ...formData, year: Number(value), semester: resolvedSemester });
+      return;
+    }
+
     setFormData({ ...formData, [name]: value });
   };
 
@@ -187,20 +205,38 @@ function Auth() {
               </div>
 
               {formData.role === "student" && (
-                <div className="form-group">
-                  <label htmlFor="year">Year</label>
-                  <select
-                    id="year"
-                    name="year"
-                    value={formData.year}
-                    onChange={handleChange}
-                    className="form-control form-select"
-                  >
-                    <option value={1}>1st Year</option>
-                    <option value={2}>2nd Year</option>
-                    <option value={3}>3rd Year</option>
-                    <option value={4}>4th Year</option>
-                  </select>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="year">Year</label>
+                    <select
+                      id="year"
+                      name="year"
+                      value={formData.year}
+                      onChange={handleChange}
+                      className="form-control form-select"
+                    >
+                      <option value={1}>1st Year</option>
+                      <option value={2}>2nd Year</option>
+                      <option value={3}>3rd Year</option>
+                      <option value={4}>4th Year</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="semester">Semester</label>
+                    <select
+                      id="semester"
+                      name="semester"
+                      value={String(formData.semester || "")}
+                      onChange={handleChange}
+                      className="form-control form-select"
+                      required
+                    >
+                      {(yearSemesterOptions[Number(formData.year)] || ["1", "2"]).map((sem) => (
+                        <option key={sem} value={sem}>Semester {sem}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               )}
 

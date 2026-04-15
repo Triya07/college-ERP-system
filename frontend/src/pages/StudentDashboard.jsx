@@ -4,6 +4,11 @@ import { useNavigate } from "react-router-dom";
 import API from "../services/api";
 import { MdBook, MdDateRange, MdAssignment, MdCheckCircle, MdHowToReg } from "react-icons/md";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
+import {
+  ATTENDANCE_TARGET_PERCENTAGE,
+  buildCourseAttendanceInsights,
+  calculateRecoveryPlan
+} from "../services/attendanceInsights";
 import "./Dashboard.css";
 
 
@@ -19,7 +24,7 @@ function StudentDashboard() {
   });
   const [courses, setCourses] = useState([]);
   const [attendanceTimeline, setAttendanceTimeline] = useState([]);
-  const [selectedAttendanceType, setSelectedAttendanceType] = useState("present");
+  const [selectedAttendanceType, _setSelectedAttendanceType] = useState("present");
   const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -96,43 +101,17 @@ function StudentDashboard() {
       items
     }));
 
-  const courseAttendanceRows = Object.values(
-    attendanceTimeline.reduce((acc, item) => {
-      const key = `${item.course_id || item.course_name || "course"}`;
-      if (!acc[key]) {
-        acc[key] = {
-          course_id: item.course_id || key,
-          course_name: item.course || item.course_name || "Course",
-          present: 0,
-          absent: 0,
-          total: 0
-        };
-      }
-
-      if (item.status === "Present") {
-        acc[key].present += 1;
-      } else {
-        acc[key].absent += 1;
-      }
-
-      acc[key].total += 1;
-      return acc;
-    }, {})
-  )
-    .map((row) => ({
-      ...row,
-      percentage: row.total ? ((row.present / row.total) * 100).toFixed(2) : "0.00"
-    }))
-    .sort((a, b) => a.course_name.localeCompare(b.course_name));
+  const courseAttendanceRows = buildCourseAttendanceInsights(attendanceTimeline, ATTENDANCE_TARGET_PERCENTAGE);
+  const overallAttendanceAnalysis = calculateRecoveryPlan({
+    present: attendanceSummary.present,
+    total: totalAttendanceRecords,
+    targetPercentage: ATTENDANCE_TARGET_PERCENTAGE
+  });
+  const riskCourses = courseAttendanceRows.filter((course) => course.analysis.belowTarget);
 
   const ATTENDANCE_COLORS = {
     present: "#22c55e",
     absent: "#ef4444"
-  };
-
-  const openAttendanceModal = (type) => {
-    setSelectedAttendanceType(type);
-    setAttendanceModalOpen(true);
   };
 
   if (loading) {
@@ -233,6 +212,35 @@ function StudentDashboard() {
           </button>
         </div>
 
+        <div className={`alert ${overallAttendanceAnalysis.belowTarget ? "alert-danger" : "alert-success"} mb-3`}>
+          {overallAttendanceAnalysis.hasData ? (
+            <>
+              <strong>Attendance Insight:</strong> Overall attendance is {overallAttendanceAnalysis.currentPercentage.toFixed(2)}%.
+              {overallAttendanceAnalysis.belowTarget
+                ? ` Attend the next ${overallAttendanceAnalysis.classesNeededToReachTarget} classes without absence to recover above ${ATTENDANCE_TARGET_PERCENTAGE}%.`
+                : ` Keep maintaining above ${ATTENDANCE_TARGET_PERCENTAGE}% for safe eligibility.`}
+            </>
+          ) : (
+            <>
+              <strong>Attendance Insight:</strong> No attendance data is available yet.
+            </>
+          )}
+        </div>
+
+        {riskCourses.length > 0 && (
+          <div className="alert alert-warning mb-4">
+            <strong>At-risk courses (below {ATTENDANCE_TARGET_PERCENTAGE}%):</strong>
+            <ul className="mb-0 mt-2">
+              {riskCourses.map((course) => (
+                <li key={`risk-${course.course_id}`}>
+                  {course.course_name}: {course.percentage}% now. Attend next {course.analysis.classesNeededToReachTarget} class
+                  {course.analysis.classesNeededToReachTarget > 1 ? "es" : ""} to recover.
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <div className="attendance-grid">
           {courseAttendanceRows.length === 0 ? (
             <div className="alert alert-info w-100">No enrollment or attendance data found.</div>
@@ -282,6 +290,9 @@ function StudentDashboard() {
                       </strong>
                     </div>
                   </div>
+                  <p className={`mb-0 mt-2 small ${course.analysis.belowTarget ? "text-danger" : "text-success"}`}>
+                    {course.recommendation}
+                  </p>
                 </div>
               );
             })
