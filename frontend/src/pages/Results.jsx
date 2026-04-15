@@ -315,52 +315,136 @@ function Results() {
       {error && <div className="alert alert-danger mb-3">{error}</div>}
 
       {isStudent && (
-        <>
-          {renderReadOnlyExamTable("Midsem", studentRowsByType("midsem"))}
-          {renderReadOnlyExamTable("Endsem", studentRowsByType("endsem"))}
-
-          <div className="shadow-sm rounded p-4 mb-4" style={panelStyle}>
-            <h5>Whole Semester Result</h5>
-            <div className="mb-3 d-flex gap-4 flex-wrap">
-              <div><strong>Total Credits:</strong> {totalCredits}</div>
-              <div><strong>Weighted Percentage:</strong> {weightedPercentage.toFixed(2)}%</div>
+        <div className="report-card-container animate-fade-in">
+          <div className="report-card">
+            {/* Report Card Header */}
+            <div className="report-card-header text-center">
+              <h2 className="college-name mb-1">INDIAN INSTITUTE OF INFORMATION TECHNOLOGY, VADODARA</h2>
+              <p className="college-motto mb-4">Excellence in Education & Research</p>
+              <div className="report-title-badge">OFFICIAL PROGRESS REPORT</div>
+              <h4 className="mt-4 mb-0">STATEMENT OF MARKS</h4>
+              <p className="academic-session text-muted">Academic Session 2023-2024</p>
             </div>
-            <table className="table table-bordered mt-3">
-              <thead>
-                <tr>
-                  <th>Course</th>
-                  <th>Credit</th>
-                  <th>Semester Marks</th>
-                  <th>Semester Total</th>
-                  <th>Percentage</th>
-                  <th>Grade</th>
-                </tr>
-              </thead>
-              <tbody>
-                {semesterByCourse.length === 0 ? (
+
+            {/* Student Info Section */}
+            <div className="report-student-info">
+              <div className="info-row">
+                <div className="info-item">
+                  <span className="info-label">Student Name</span>
+                  <span className="info-value">{user?.profile?.name || user?.username}</span>
+                </div>
+                <div className="info-item">
+                  <span className="info-label">Roll Number</span>
+                  <span className="info-value">{user?.profile?.roll_number || "N/A"}</span>
+                </div>
+              </div>
+              <div className="info-row">
+                <div className="info-item">
+                  <span className="info-label">Department</span>
+                  <span className="info-value text-uppercase">{user?.profile?.department || "General"}</span>
+                </div>
+                <div className="info-item">
+                  <span className="info-label">Semester</span>
+                  <span className="info-value">{user?.profile?.semester || "N/A"}</span>
+                </div>
+              </div>
+              <div className="info-row">
+                <div className="info-item">
+                  <span className="info-label">Academic Status</span>
+                  <span className={`info-value status-badge ${weightedPercentage >= 40 ? "pass" : "fail"}`}>
+                    {weightedPercentage >= 40 ? "PROMOTED" : "DETAINED"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Unified Marks Table */}
+            <div className="report-table-container mt-4">
+              <table className="report-table">
+                <thead>
                   <tr>
-                    <td colSpan="6" className="text-center">No semester results found</td>
+                    <th rowSpan="2">Course Title</th>
+                    <th rowSpan="2" className="text-center">Credits</th>
+                    <th colSpan="2" className="text-center">Internal Assessments</th>
+                    <th rowSpan="2" className="text-center">Semester Total</th>
+                    <th rowSpan="2" className="text-center">Grade</th>
                   </tr>
-                ) : (
-                  semesterByCourse.map((row) => {
-                    const percentage = percentageFrom(row.marks_obtained, row.total_marks);
-                    const grade = gradeFromPercentage(percentage);
-                    return (
-                      <tr key={`semester-${row.course_id}`}>
-                        <td>{row.course_name}</td>
-                        <td>{row.credits}</td>
-                        <td>{row.marks_obtained.toFixed(2)}</td>
-                        <td>{row.total_marks.toFixed(2)}</td>
-                        <td>{percentage.toFixed(2)}%</td>
-                        <td><span className={`badge ${gradeBadgeClass(grade)}`}>{grade}</span></td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                  <tr>
+                    <th className="text-center">Midsem</th>
+                    <th className="text-center">Endsem</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {semesterByCourse.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" className="text-center py-5 text-muted italic">No academic records found for this semester.</td>
+                    </tr>
+                  ) : (
+                    semesterByCourse.map((row) => {
+                      const midData = results.find(r => r.course_id === row.course_id && normalize(r.exam_type) === "midsem");
+                      const endData = results.find(r => r.course_id === row.course_id && normalize(r.exam_type) === "endsem");
+                      const percentage = percentageFrom(row.marks_obtained, row.total_marks);
+                      const grade = gradeFromPercentage(percentage);
+
+                      return (
+                        <tr key={`rc-${row.course_id}`}>
+                          <td className="course-name">{row.course_name}</td>
+                          <td className="text-center">{row.credits}</td>
+                          <td className="text-center">{midData ? `${midData.marks_obtained}/${midData.total_marks}` : "-"}</td>
+                          <td className="text-center">{endData ? `${endData.marks_obtained}/${endData.total_marks}` : "-"}</td>
+                          <td className="text-center fw-bold">{row.marks_obtained.toFixed(0)}/{row.total_marks.toFixed(0)}</td>
+                          <td className="text-center"><span className={`report-grade ${grade.toLowerCase()}`}>{grade}</span></td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Summary & Footer */}
+            <div className="report-footer mt-4">
+              <div className="report-summary">
+                <div className="summary-card">
+                  <span className="summary-label">Total Credits Earned</span>
+                  <span className="summary-value">{totalCredits}</span>
+                </div>
+                <div className="summary-card gold">
+                  <span className="summary-label">Weighted Percentage</span>
+                  <span className="summary-value">{weightedPercentage.toFixed(2)}%</span>
+                </div>
+                <div className="summary-card">
+                  <span className="summary-label">Result Status</span>
+                  <span className={`summary-value status-${weightedPercentage >= 40 ? "pass" : "fail"}`}>
+                    {weightedPercentage >= 40 ? "PASS" : "FAIL"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="report-signatures mt-5">
+                <div className="signature-box">
+                  <div className="sign-line"></div>
+                  <span>Dean of Academics</span>
+                </div>
+                <div className="report-seal">
+                  <div className="seal-circle">IIITV SEAL</div>
+                </div>
+                <div className="signature-box">
+                  <div className="sign-line"></div>
+                  <span>Controller of Examinations</span>
+                </div>
+              </div>
+            </div>
+            
+
           </div>
-        </>
+          
+          <div className="text-center mt-4 mb-5">
+             <button className="btn btn-primary" onClick={() => window.print()}>
+               Print Official Report Card
+             </button>
+          </div>
+        </div>
       )}
 
       {canManageResults && (
@@ -414,17 +498,31 @@ function Results() {
                 </select>
               </div>
 
-              <div className="col-md-2">
-                <label className="form-label mb-1">Exam Type</label>
-                <select
-                  className="form-select"
-                  value={selectedExamType}
-                  onChange={(e) => handleExamTypeChange(e.target.value)}
-                >
-                  <option value="midsem">Midsem</option>
-                  <option value="endsem">Endsem</option>
-                  <option value="semester">Semester</option>
-                </select>
+              <div className="col-md-5">
+                <label className="form-label mb-1">Select Exam Phase</label>
+                <div className="btn-group w-100" role="group">
+                  <button 
+                    type="button" 
+                    className={`btn ${selectedExamType === "midsem" ? "btn-primary" : "btn-outline-primary"}`}
+                    onClick={() => handleExamTypeChange("midsem")}
+                  >
+                    Midsem
+                  </button>
+                  <button 
+                    type="button" 
+                    className={`btn ${selectedExamType === "endsem" ? "btn-primary" : "btn-outline-primary"}`}
+                    onClick={() => handleExamTypeChange("endsem")}
+                  >
+                    Endsem
+                  </button>
+                  <button 
+                    type="button" 
+                    className={`btn ${selectedExamType === "semester" ? "btn-primary" : "btn-outline-primary"}`}
+                    onClick={() => handleExamTypeChange("semester")}
+                  >
+                    Whole Sem
+                  </button>
+                </div>
               </div>
 
               <div className="col-md-3">

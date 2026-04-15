@@ -194,7 +194,6 @@ function AdminDashboard() {
 
       <div className="mb-4 d-flex justify-content-center align-items-center gap-2 flex-nowrap">
         <button className="btn btn-outline-primary" style={{ minWidth: "120px", fontSize: "0.95rem" }} onClick={() => handleNavigate("/results")}>Results</button>
-        <button className="btn btn-outline-primary" style={{ minWidth: "120px", fontSize: "0.95rem" }} onClick={() => handleNavigate("/timetable")}>Timetable</button>
         <button className="btn btn-outline-primary" style={{ minWidth: "120px", fontSize: "0.95rem" }} onClick={() => handleNavigate("/fees")}>Fees</button>
         <button className="btn btn-outline-primary" style={{ minWidth: "120px", fontSize: "0.95rem" }} onClick={() => handleNavigate("/notifications")}>Notifications</button>
         <button className="btn btn-outline-primary" style={{ minWidth: "120px", fontSize: "0.95rem" }} onClick={() => handleNavigate("/classes")}>Classes</button>

@@ -135,7 +135,7 @@ function Fees() {
         <div className="col-md-4">
           <div className="card border-0 shadow-sm">
             <div className="card-body">
-              <small className="text-muted">Outstanding</small>
+              <small className="text-muted">Amount to be Paid</small>
               <h4 className="mb-0 text-danger">Rs. {(totalDue - totalPaid).toFixed(2)}</h4>
             </div>
           </div>
@@ -272,7 +272,7 @@ function Fees() {
                   <th>Type</th>
                   <th>Due</th>
                   <th>Paid</th>
-                  <th>Balance</th>
+                  <th>Amount still left to be paid</th>
                   <th>Status</th>
                   <th>Due Date</th>
                   <th>Actions</th>
