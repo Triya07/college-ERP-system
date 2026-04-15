@@ -82,6 +82,21 @@
   font-size: 1.1rem;
 }
 
+.quick-insight-box {
+  background-color: var(--surface-2-bg);
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  font-size: 0.95rem;
+  margin-top: 10px;
+}
+
+body[data-theme='dark'] .quick-insight-box {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
 @media (max-width: 992px) {
   .profile-metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

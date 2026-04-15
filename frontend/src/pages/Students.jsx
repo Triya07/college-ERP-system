@@ -458,7 +458,7 @@ function Students() {
                               <td className="fw-bold">{student.name}</td>
                               <td>{student.phone}</td>
                               <td>
-                                <small className="text-muted">{student.roll_number || "N/A"}</small>
+                                <small className="text-muted">{student.rollNumber || "N/A"}</small>
                               </td>
                               <td>
                                 <button
@@ -517,7 +517,7 @@ function Students() {
                       </td>
                       <td>{student.phone}</td>
                       <td>
-                        <small className="text-muted">{student.roll_number || "N/A"}</small>
+                        <small className="text-muted">{student.rollNumber || "N/A"}</small>
                       </td>
                       <td>
                         <button

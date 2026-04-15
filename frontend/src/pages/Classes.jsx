@@ -248,7 +248,7 @@ function Classes() {
                 >
                   {students.map((student) => (
                     <option key={student.student_id} value={student.student_id}>
-                      {student.name} ({student.academic_id || student.roll_number || student.student_id})
+                      {student.name} ({student.academic_id || student.rollNumber || student.student_id})
                     </option>
                   ))}
                 </select>

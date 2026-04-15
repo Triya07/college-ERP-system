@@ -132,7 +132,7 @@ function StudentDashboard() {
       <div className="dashboard-header">
         <div>
           <h1 className="animate-slide-up">Student Dashboard</h1>
-          <p className="subtitle">Welcome, {user?.profile?.name || user?.username || user?.email}!</p>
+          <p className="subtitle">Welcome back, {user?.profile?.name || user?.email || "User"}! {user?.profile?.rollNumber && <span className="text-primary font-weight-bold ml-1">(Roll No: {user.profile.rollNumber})</span>}</p>
         </div>
         <button onClick={logout} className="btn btn-danger">
           Logout

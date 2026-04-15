@@ -280,6 +280,7 @@ function Faculty() {
                   <th>Email</th>
                   <th>Department</th>
                   <th>Phone</th>
+                  <th>Roll Number</th>
                   <th>Qualification</th>
                   <th>Experience</th>
                   <th>Actions</th>
@@ -292,6 +293,7 @@ function Faculty() {
                     <td>{member.email || "N/A"}</td>
                     <td>{member.department || "N/A"}</td>
                     <td>{member.phone || "N/A"}</td>
+                    <td><span className="badge bg-secondary">{member.rollNumber || "N/A"}</span></td>
                     <td>{member.qualification || "N/A"}</td>
                     <td>{member.experience || 0} years</td>
                     <td>

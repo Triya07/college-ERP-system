@@ -18,8 +18,7 @@ function Profile() {
     attendanceLogs: 0
   });
   const [formData, setFormData] = useState({
-    username: "",
-    academic_id: "",
+    rollNumber: "",
     name: "",
     department: "",
     phone: "",
@@ -45,7 +44,7 @@ function Profile() {
       .join(" ");
   };
 
-  const initials = ((formData.name || formData.username || user?.email || "U").trim().match(/\b\w/g) || ["U"])
+  const initials = ((formData.name || user?.email || "U").trim().match(/\b\w/g) || ["U"])
     .slice(0, 2)
     .join("")
     .toUpperCase();
@@ -77,8 +76,7 @@ function Profile() {
       const data = response.data || {};
       const profile = data.profile || {};
       setFormData({
-        username: data.username || "",
-        academic_id: profile.academic_id || data.academic_id || "",
+        rollNumber: profile.rollNumber || "",
         name: profile.name || "",
         department: profile.department || "",
         phone: profile.phone || "",
@@ -170,13 +168,13 @@ function Profile() {
               <div className="profile-summary-top">
                 <div className="profile-avatar">{initials}</div>
                 <div>
-                  <h3 className="mb-1">{formData.name || formData.username || "User"}</h3>
+                  <h3 className="mb-1">{formData.name || "User"}</h3>
                   <div className="d-flex flex-wrap gap-2 mb-2">
                     <span className="badge text-bg-info">{toTitleCase(user?.role)}</span>
                     <span className="badge text-bg-secondary">{formData.department || "No department"}</span>
                   </div>
                   <p className="mb-1 text-muted">{user?.email}</p>
-                  <p className="mb-0 text-muted">{formData.academic_id || "No academic id"}</p>
+                  <p className="mb-0 text-muted">Roll No: {formData.rollNumber || "N/A"}</p>
                 </div>
               </div>
 
@@ -207,13 +205,8 @@ function Profile() {
               <form onSubmit={handleSubmit}>
                 <div className="row g-3">
                   <div className="col-md-6">
-                    <label className="form-label">Username</label>
-                    <input className="form-control" name="username" value={formData.username} onChange={handleChange} />
-                  </div>
-
-                  <div className="col-md-6">
-                    <label className="form-label">Academic ID</label>
-                    <input className="form-control" name="academic_id" value={formData.academic_id} onChange={handleChange} />
+                    <label className="form-label">Roll Number</label>
+                    <input className="form-control" name="rollNumber" value={formData.rollNumber} onChange={handleChange} disabled />
                   </div>
 
                   <div className="col-md-6">
@@ -275,7 +268,7 @@ function Profile() {
               <ul className="profile-highlight-list">
                 <li><MdBadge /> Role: <strong>{toTitleCase(user?.role)}</strong></li>
                 <li><MdSchool /> Department: <strong>{formData.department || "-"}</strong></li>
-                <li><MdAssignment /> Academic ID: <strong>{formData.academic_id || "-"}</strong></li>
+                <li><MdBadge /> Roll Number: <strong>{formData.rollNumber || "-"}</strong></li>
                 <li><MdDateRange /> Phone: <strong>{formData.phone || "-"}</strong></li>
               </ul>
             </div>
@@ -285,7 +278,7 @@ function Profile() {
             <div className="card-body p-4">
               <h4 className="mb-3">Quick Insight</h4>
               <p className="text-muted mb-2">This block summarizes your current ERP activity scope.</p>
-              <div className="small">
+              <div className="quick-insight-box">
                 <div className="mb-2">Courses available: <strong>{metrics.courses}</strong></div>
                 <div className="mb-2">Results visible: <strong>{metrics.results}</strong></div>
                 <div className="mb-0">Attendance entries: <strong>{metrics.attendanceLogs}</strong></div>

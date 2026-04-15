@@ -833,6 +833,7 @@ const ensureFeatureTables = () => {
     "ALTER TABLE student ADD COLUMN section VARCHAR(20) NULL",
     "ALTER TABLE student ADD COLUMN academic_id VARCHAR(80) NULL",
     "ALTER TABLE faculty ADD COLUMN academic_id VARCHAR(80) NULL",
+    "ALTER TABLE faculty ADD COLUMN roll_number VARCHAR(50) NULL UNIQUE",
     "ALTER TABLE course ADD COLUMN semester VARCHAR(20) NULL",
     "ALTER TABLE course ADD COLUMN description TEXT NULL",
     "ALTER TABLE result ADD COLUMN exam_type ENUM('midsem','endsem','semester') DEFAULT 'semester'",
@@ -1049,7 +1050,9 @@ app.post("/auth/signup", authRateLimiter, async (req, res) => {
           throw Object.assign(new Error(validation.message), { statusCode: 400 });
         }
 
-        const rollNumber = `STU${userId}${Date.now()}`.substring(0, 20);
+        const studentRollRows = await queryAsync("SELECT MAX(CAST(roll_number AS UNSIGNED)) AS max_roll FROM student");
+        const nextRoll = (Number(studentRollRows[0]?.max_roll) || 0) + 1;
+        const rollNumber = String(nextRoll);
         await queryAsync(
           "INSERT INTO student (user_id, name, department, year, semester, section, phone, roll_number, academic_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
           [
@@ -1067,9 +1070,13 @@ app.post("/auth/signup", authRateLimiter, async (req, res) => {
         return { message: "Student registered successfully", userId };
       }
 
+      const facultyRollRows = await queryAsync("SELECT MAX(CAST(roll_number AS UNSIGNED)) AS max_roll FROM faculty");
+      const nextRoll = Math.max(Number(facultyRollRows[0]?.max_roll) || 0, 100) + 1;
+      const rollNumber = String(nextRoll);
+
       await queryAsync(
-        "INSERT INTO faculty (user_id, name, department, phone, academic_id) VALUES (?, ?, ?, ?, ?)",
-        [userId, name, department || "General", phone || "", computedAcademicId]
+        "INSERT INTO faculty (user_id, name, department, phone, academic_id, roll_number) VALUES (?, ?, ?, ?, ?, ?)",
+        [userId, name, department || "General", phone || "", computedAcademicId, rollNumber]
       );
       return { message: "Teacher registered successfully", userId };
     });
@@ -1152,16 +1159,14 @@ app.post("/auth/login", authRateLimiter, async (req, res) => {
           });
         };
 
-        if (user.role === "student") {
           return respondWithProfile(
-            "SELECT student_id, name, department, year, semester, section, academic_id FROM student WHERE user_id = ?",
+            "SELECT student_id, name, department, year, semester, section, academic_id, roll_number AS rollNumber FROM student WHERE user_id = ?",
             [user.user_id]
           );
-        }
 
         if (user.role === "teacher") {
           return respondWithProfile(
-            "SELECT faculty_id, name, department, academic_id FROM faculty WHERE user_id = ?",
+            "SELECT faculty_id, name, department, academic_id, roll_number AS rollNumber FROM faculty WHERE user_id = ?",
             [user.user_id]
           );
         }
@@ -1298,9 +1303,9 @@ app.get("/auth/verify", verifyToken, (req, res) => {
   let query = "";
 
   if (req.user.role === "student") {
-    query = "SELECT student_id, name, department, year, semester, section, academic_id FROM student WHERE user_id = ?";
+    query = "SELECT student_id, name, department, year, semester, section, academic_id, roll_number AS rollNumber FROM student WHERE user_id = ?";
   } else if (req.user.role === "teacher") {
-    query = "SELECT faculty_id, name, department, academic_id FROM faculty WHERE user_id = ?";
+    query = "SELECT faculty_id, name, department, academic_id, roll_number AS rollNumber FROM faculty WHERE user_id = ?";
   } else {
     query = "SELECT admin_id, name, department FROM admin WHERE user_id = ?";
   }
@@ -1375,7 +1380,7 @@ app.get("/auth/profile", verifyToken, async (req, res) => {
     const base = users[0];
     if (base.role === "student") {
       const rows = await queryAsync(
-        "SELECT student_id, name, department, year, semester, section, phone, academic_id FROM student WHERE user_id = ?",
+        "SELECT student_id, name, department, year, semester, section, phone, academic_id, roll_number AS rollNumber FROM student WHERE user_id = ?",
         [req.user.user_id]
       );
       return res.json({ ...base, profile: rows[0] || {} });
@@ -1383,7 +1388,7 @@ app.get("/auth/profile", verifyToken, async (req, res) => {
 
     if (base.role === "teacher") {
       const rows = await queryAsync(
-        "SELECT faculty_id, name, department, phone, qualification, experience, academic_id FROM faculty WHERE user_id = ?",
+        "SELECT faculty_id, name, department, phone, qualification, experience, academic_id, roll_number AS rollNumber FROM faculty WHERE user_id = ?",
         [req.user.user_id]
       );
       return res.json({ ...base, profile: rows[0] || {} });
@@ -1798,7 +1803,8 @@ app.get("/admin/faculty", verifyToken, checkRole(["admin"]), (req, res) => {
         f.academic_id,
         f.qualification,
         f.experience,
-        u.email
+        u.email,
+        f.roll_number AS rollNumber
       FROM faculty f
       LEFT JOIN user u ON f.user_id = u.user_id
     `,
@@ -1829,9 +1835,13 @@ app.post("/admin/faculty", verifyToken, checkRole(["admin"]), async (req, res) =
         [email, hashedPassword, "teacher"]
       );
       const userId = userResult.insertId;
+      const facultyRollRows = await queryAsync("SELECT MAX(CAST(roll_number AS UNSIGNED)) AS max_roll FROM faculty");
+      const nextRoll = Math.max(Number(facultyRollRows[0]?.max_roll) || 0, 100) + 1;
+      const rollNumber = String(nextRoll);
+
       const facultyResult = await queryAsync(
-        "INSERT INTO faculty (user_id, name, department, phone, qualification, experience, academic_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [userId, name, department || "General", phone || "", qualification || "", experience || 0, academic_id || emailPrefix(email)]
+        "INSERT INTO faculty (user_id, name, department, phone, qualification, experience, academic_id, roll_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [userId, name, department || "General", phone || "", qualification || "", experience || 0, academic_id || emailPrefix(email), rollNumber]
       );
       return { userId, facultyId: facultyResult.insertId };
     });
@@ -2270,7 +2280,7 @@ app.put("/attendance/:attendanceId", verifyToken, checkRole(["admin", "teacher"]
 
 app.get("/students", verifyToken, checkRole(["admin", "teacher", "student"]), (req, res) => {
   if (req.user.role === "admin") {
-    return db.query("SELECT student_id, user_id, name, department, year, semester, section, roll_number, phone, academic_id, enrollment_date FROM student", (err, result) => {
+    return db.query("SELECT student_id, user_id, name, department, year, semester, section, roll_number AS rollNumber, phone, academic_id, enrollment_date FROM student", (err, result) => {
       if (err) {
         console.log(err);
         res.status(500).send("Error fetching students");
@@ -2287,7 +2297,7 @@ app.get("/students", verifyToken, checkRole(["admin", "teacher", "student"]), (r
       }
 
       const query = `
-        SELECT DISTINCT s.student_id, s.user_id, s.name, s.department, s.year, s.semester, s.section, s.roll_number, s.phone, s.academic_id, s.enrollment_date
+        SELECT DISTINCT s.student_id, s.user_id, s.name, s.department, s.year, s.semester, s.section, s.roll_number AS rollNumber, s.phone, s.academic_id, s.enrollment_date
         FROM student s
         WHERE EXISTS (
           SELECT 1
@@ -2320,7 +2330,7 @@ app.get("/students", verifyToken, checkRole(["admin", "teacher", "student"]), (r
     }
 
     db.query(
-      "SELECT student_id, user_id, name, department, year, semester, section, roll_number, phone, academic_id, enrollment_date FROM student WHERE student_id = ?",
+      "SELECT student_id, user_id, name, department, year, semester, section, roll_number AS rollNumber, phone, academic_id, enrollment_date FROM student WHERE student_id = ?",
       [studentId],
       (err, result) => {
         if (err) {
@@ -2363,7 +2373,9 @@ app.post("/students", verifyToken, checkRole(["admin"]), async (req, res) => {
       );
 
       const userId = userResult.insertId;
-      const rollNumber = `STU${userId}${Date.now()}`.substring(0, 20);
+      const studentRollRows = await queryAsync("SELECT MAX(CAST(roll_number AS UNSIGNED)) AS max_roll FROM student");
+      const nextRoll = (Number(studentRollRows[0]?.max_roll) || 0) + 1;
+      const rollNumber = String(nextRoll);
       const studentResult = await queryAsync(
         "INSERT INTO student (user_id, name, department, year, semester, section, roll_number, phone, academic_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [userId, name, department, validation.year, validation.semester, section || "A", rollNumber, phone, computedAcademicId]
@@ -4186,18 +4198,214 @@ app.delete("/announcements/:id", verifyToken, checkRole(["admin", "teacher"]), a
 
 // ===== COURSE REGISTRATION ENDPOINTS =====
 app.get("/course-registration", verifyToken, checkRole(["admin", "teacher", "student"]), async (req, res) => {
-  // Backlog/course registration feature is intentionally disabled.
-  return res.status(410).json({ message: "Course registration feature is disabled" });
+  const baseQuery = `
+    SELECT
+      cr.request_id,
+      cr.student_id,
+      s.name AS student_name,
+      s.department,
+      s.year,
+      s.semester AS student_semester,
+      cr.course_id,
+      c.course_name,
+      c.course_code,
+      c.semester AS course_semester,
+      CASE
+        WHEN CAST(COALESCE(c.semester, '0') AS UNSIGNED) < CAST(COALESCE(s.semester, '0') AS UNSIGNED)
+          THEN 'Backlog'
+        ELSE 'Regular'
+      END AS registration_type,
+      cr.status,
+      cr.student_note,
+      cr.reviewer_note,
+      cr.requested_at,
+      cr.reviewed_at,
+      cr.reviewed_by
+    FROM course_registration_request cr
+    JOIN student s ON cr.student_id = s.student_id
+    JOIN course c ON cr.course_id = c.course_id
+  `;
+
+  try {
+    if (req.user.role === "student") {
+      const studentRows = await queryAsync("SELECT student_id FROM student WHERE user_id = ?", [req.user.user_id]);
+      const studentId = studentRows[0]?.student_id;
+      if (!studentId) {
+        return res.status(404).json({ message: "Student profile not found" });
+      }
+      const rows = await queryAsync(`${baseQuery} WHERE cr.student_id = ? ORDER BY cr.requested_at DESC`, [studentId]);
+      return res.json(rows);
+    }
+
+    if (req.user.role === "teacher") {
+      const facultyId = await getTeacherFacultyIdAsync(req.user.user_id);
+      if (!facultyId) {
+        return res.status(404).json({ message: "Faculty profile not found" });
+      }
+      const rows = await queryAsync(
+        `${baseQuery} WHERE c.faculty_id = ? ORDER BY cr.requested_at DESC`,
+        [facultyId]
+      );
+      return res.json(rows);
+    }
+
+    const rows = await queryAsync(`${baseQuery} ORDER BY cr.requested_at DESC`);
+    return res.json(rows);
+  } catch (err) {
+    console.log(err);
+    return res.status(500).json({ message: "Error fetching registration requests" });
+  }
 });
 
 app.get("/course-registration/available", verifyToken, checkRole(["student"]), (req, res) => {
-  // Backlog/course registration feature is intentionally disabled.
-  return res.status(410).json({ message: "Course registration feature is disabled" });
+  getStudentIdByUserId(req.user.user_id, (studentErr, studentId) => {
+    if (studentErr) {
+      return res.status(404).json({ message: "Student profile not found" });
+    }
+
+    const studentContextQuery = "SELECT semester FROM student WHERE student_id = ? LIMIT 1";
+    db.query(studentContextQuery, [studentId], (studentCtxErr, studentCtxRows) => {
+      if (studentCtxErr) {
+        console.log(studentCtxErr);
+        return res.status(500).json({ message: "Error resolving student semester" });
+      }
+
+      if (!studentCtxRows.length) {
+        return res.status(404).json({ message: "Student profile not found" });
+      }
+
+      const studentSemester = Number(studentCtxRows[0].semester || 0);
+
+      const query = `
+        SELECT
+          c.course_id,
+          c.course_name,
+          c.course_code,
+          c.department,
+          c.credits,
+          c.semester AS course_semester,
+          CASE WHEN sc.enrollment_id IS NULL THEN FALSE ELSE TRUE END AS is_enrolled,
+          pending.request_id AS pending_request_id,
+          pending.status AS pending_status,
+          CASE
+            WHEN c.semester IS NULL OR c.semester = '' THEN 'Regular'
+            WHEN CAST(c.semester AS UNSIGNED) < ? THEN 'Backlog'
+            ELSE 'Regular'
+          END AS registration_type,
+          CASE
+            WHEN c.semester IS NULL OR c.semester = '' THEN TRUE
+            WHEN CAST(c.semester AS UNSIGNED) <= ? THEN TRUE
+            ELSE FALSE
+          END AS can_request
+        FROM course c
+        LEFT JOIN student_course sc
+          ON sc.course_id = c.course_id AND sc.student_id = ?
+        LEFT JOIN (
+          SELECT request_id, course_id, status
+          FROM course_registration_request
+          WHERE student_id = ? AND status = 'Pending'
+        ) pending
+          ON pending.course_id = c.course_id
+        ORDER BY c.course_name
+      `;
+
+      db.query(query, [studentSemester, studentSemester, studentId, studentId], (err, rows) => {
+        if (err) {
+          console.log(err);
+          return res.status(500).json({ message: "Error fetching available courses" });
+        }
+
+        const hydrated = (rows || []).map((row) => ({
+          ...row,
+          registration_locked_reason: row.can_request
+            ? null
+            : `Course belongs to future semester ${row.course_semester}`
+        }));
+
+        return res.json(hydrated);
+      });
+    });
+  });
 });
 
 app.post("/course-registration", verifyToken, checkRole(["student"]), (req, res) => {
-  // Backlog/course registration feature is intentionally disabled.
-  return res.status(410).json({ message: "Course registration feature is disabled" });
+  const { course_id, student_note } = req.body;
+  if (!course_id) {
+    return res.status(400).json({ message: "Course is required" });
+  }
+
+  getStudentIdByUserId(req.user.user_id, (studentErr, studentId) => {
+    if (studentErr) {
+      return res.status(404).json({ message: "Student profile not found" });
+    }
+
+    const eligibilityQuery = `
+      SELECT s.semester AS student_semester, c.semester AS course_semester
+      FROM student s
+      JOIN course c ON c.course_id = ?
+      WHERE s.student_id = ?
+      LIMIT 1
+    `;
+
+    db.query(eligibilityQuery, [Number(course_id), studentId], (eligibilityErr, eligibilityRows) => {
+      if (eligibilityErr) {
+        console.log(eligibilityErr);
+        return res.status(500).json({ message: "Error validating course eligibility" });
+      }
+
+      if (!eligibilityRows.length) {
+        return res.status(404).json({ message: "Course or student profile not found" });
+      }
+
+      const studentSemester = Number(eligibilityRows[0].student_semester || 0);
+      const courseSemester = Number(eligibilityRows[0].course_semester || 0);
+
+      if (courseSemester && studentSemester && courseSemester > studentSemester) {
+        return res.status(400).json({ message: "You can only request current or previous semester (backlog) courses" });
+      }
+
+      const enrolledQuery = "SELECT enrollment_id FROM student_course WHERE student_id = ? AND course_id = ?";
+      db.query(enrolledQuery, [studentId, Number(course_id)], (enrolledErr, enrolledRows) => {
+        if (enrolledErr) {
+          console.log(enrolledErr);
+          return res.status(500).json({ message: "Error validating enrollment" });
+        }
+
+        if (enrolledRows.length) {
+          return res.status(400).json({ message: "You are already enrolled in this course" });
+        }
+
+        const pendingQuery = `
+          SELECT request_id FROM course_registration_request
+          WHERE student_id = ? AND course_id = ? AND status = 'Pending'
+        `;
+
+        db.query(pendingQuery, [studentId, Number(course_id)], (pendingErr, pendingRows) => {
+          if (pendingErr) {
+            console.log(pendingErr);
+            return res.status(500).json({ message: "Error validating pending requests" });
+          }
+
+          if (pendingRows.length) {
+            return res.status(400).json({ message: "A pending request already exists for this course" });
+          }
+
+          db.query(
+            "INSERT INTO course_registration_request (student_id, course_id, student_note) VALUES (?, ?, ?)",
+            [studentId, Number(course_id), student_note || ""],
+            (insertErr, result) => {
+              if (insertErr) {
+                console.log(insertErr);
+                return res.status(500).json({ message: "Error submitting registration request" });
+              }
+
+              return res.status(201).json({ message: "Registration request submitted", request_id: result.insertId });
+            }
+          );
+        });
+      });
+    });
+  });
 });
 
 app.put("/course-registration/:id/review", verifyToken, checkRole(["admin", "teacher"]), async (req, res) => {

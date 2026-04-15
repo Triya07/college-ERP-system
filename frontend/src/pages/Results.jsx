@@ -188,7 +188,7 @@ function Results() {
 
     if (filters.search) {
       const query = normalize(filters.search);
-      const candidate = normalize(`${s.name || ""} ${s.academic_id || ""} ${s.roll_number || ""}`);
+      const candidate = normalize(`${s.name || ""} ${s.academic_id || ""} ${s.rollNumber || ""}`);
       if (!candidate.includes(query)) return false;
     }
 
@@ -331,11 +331,11 @@ function Results() {
               <div className="info-row">
                 <div className="info-item">
                   <span className="info-label">Student Name</span>
-                  <span className="info-value">{user?.profile?.name || user?.username}</span>
+                  <span className="info-value">{user?.profile?.name || "N/A"}</span>
                 </div>
                 <div className="info-item">
                   <span className="info-label">Roll Number</span>
-                  <span className="info-value">{user?.profile?.roll_number || "N/A"}</span>
+                  <span className="info-value">{user?.profile?.rollNumber || "N/A"}</span>
                 </div>
               </div>
               <div className="info-row">
@@ -572,7 +572,7 @@ function Results() {
                               type="button"
                               className={`btn btn-sm ${selected ? "btn-primary" : "btn-outline-primary"}`}
                               onClick={() => handleSelectStudent(student)}
-                              title={student.academic_id || ""}
+                              title={`Roll No: ${student.rollNumber || "N/A"}`}
                             >
                               {student.name}
                             </button>
